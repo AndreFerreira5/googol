@@ -1,3 +1,5 @@
+import java.util.Arrays;
+
 class TrieNode{
     int code;
     TrieNode[] children;

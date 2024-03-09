@@ -27,7 +27,7 @@ public class IndexStorageBarrel extends Thread{
                 log("Error connecting to multicast group. Retrying in "+ retryDelay +"s...");
                 attempts++;
                 try {
-                    Thread.sleep(retryDelay); // Wait before retrying
+                    Thread.sleep(retryDelay); // wait before retrying
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     log("Interrupted during retry wait! Interrupting...");
@@ -81,7 +81,9 @@ public class IndexStorageBarrel extends Thread{
     }
 
     public void insert(String word, int linkIndex){
-        trie.insert(word, linkIndex);
+        // insert provided word with provided link index in the trie object
+        // always converting the word to lowercase
+        trie.insert(word.toLowerCase(), linkIndex);
     }
 
     public int[] getLinkIndices(String word){

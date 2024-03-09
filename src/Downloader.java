@@ -16,18 +16,19 @@ public class Downloader  extends Thread{
     private final UUID uuid = UUID.randomUUID();
     private final Set<String> parsedUrls;
     private final LinkedBlockingDeque<Url> deque;
-    private final int CRAWLING_MAX_DEPTH;
+    private final int crawlingMaxDepth;
     private CrawlingStrategy crawlingStrategy;
+    private final int urlTimeout = 2000;
     private final String multicastAddress;
     private final int port;
     private final int multicastServerConnectMaxRetries = 5;
     private final int retryDelay = 5;
 
     // constructor with all downloader parameters
-    private Downloader(LinkedBlockingDeque<Url> deque, Set<String> parsedUrls, int CRAWLING_MAX_DEPTH, CrawlingStrategy crawlingStrategy, String multicastAddress, int port) {
+    private Downloader(LinkedBlockingDeque<Url> deque, Set<String> parsedUrls, int crawlingMaxDepth, CrawlingStrategy crawlingStrategy, String multicastAddress, int port) {
         this.deque = deque;
         this.parsedUrls = Collections.synchronizedSet(parsedUrls);
-        this.CRAWLING_MAX_DEPTH = CRAWLING_MAX_DEPTH;
+        this.crawlingMaxDepth = crawlingMaxDepth;
         this.crawlingStrategy = crawlingStrategy;
         this.multicastAddress = multicastAddress;
         this.port = port;
@@ -89,7 +90,7 @@ public class Downloader  extends Thread{
         String link = url.url;
         int depth = url.depth;
 
-        if(parsedUrls.contains(link) || depth > CRAWLING_MAX_DEPTH) {// TODO later integrate this with the barrels to make sure the barrels contain the url info (it's more robust this way)
+        if(parsedUrls.contains(link) || depth > crawlingMaxDepth) {// TODO later integrate this with the barrels to make sure the barrels contain the url info (it's more robust this way)
             //log(url + " already parsed! skipping...");
             return;
         }
@@ -100,7 +101,7 @@ public class Downloader  extends Thread{
             doc = Jsoup.connect(link)
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
                     .referrer("http://www.google.com")
-                    .timeout(2 * 1000) // 2 second timeout
+                    .timeout(urlTimeout)
                     .ignoreHttpErrors(true)
                     .get();
 
@@ -157,10 +158,12 @@ public class Downloader  extends Thread{
 
     public void run(){
         log("UP!");
-        boolean interrupted = false;
+
+        // setup multicast server
         MulticastSocket socket = setupMulticastServer();
         log("Successfully connected to multicast server!");
 
+        boolean interrupted = false;
         while(!interrupted){
             try{
 

@@ -3,7 +3,7 @@ import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
 
 public class Main {
-    private static final int DOWNLOADER_THREADS_NUM = 1;
+    private static final int DOWNLOADER_THREADS_NUM = 3;
     private static final int BARRELS_NUM = 3;
     public static final int CRAWLING_MAX_DEPTH = 3;
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
@@ -34,12 +34,7 @@ public class Main {
             barrelThread.start();
         }
 
-
-
-
-
         deque.add(new Url("https://medium.com/pythoneers/9-different-ways-to-embedded-code-in-medium-9213cb4c0a2e"));
-
 
         while(true){
             //for(Url url : deque){
