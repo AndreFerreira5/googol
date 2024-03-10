@@ -72,7 +72,6 @@ class Node4 extends Node {
         for(int i = 0; i < count; i++){
             if(keys[i] == key){
                 children[i] = upgradedNode;
-                return;
             }
         }
     }
@@ -125,6 +124,11 @@ class Node16 extends Node {
     }
 
 
+    // this method will be used by the Node4 object when it has reached
+    // the maximum number of 4 children, and it needs to add them to this new node
+    // therefore there will be no duplicate child nodes check here, because it's assumed
+    // the previous node didn't have any duplicate children
+    // also it is assumed that the children nodes will be added sequentially
     void insert(byte key, Node child){
         if (count < 16) {
             keys[count] = key;
@@ -134,6 +138,9 @@ class Node16 extends Node {
             throw new IllegalStateException("Node16 is full and cannot add more children.");
         }
     }
+
+
+
 
 
     @Override
@@ -151,7 +158,6 @@ class Node16 extends Node {
         for(int i = 0; i < count; i++){
             if(keys[i] == key){
                 children[i] = upgradedNode;
-                return;
             }
         }
     }
@@ -198,9 +204,15 @@ class Node48 extends Node {
         return new InsertResult(children[count-1], null);
     }
 
+
+    // this method will be used by the Node16 object when it has reached
+    // the maximum number of 16 children, and it needs to add them to this new node
+    // therefore there will be no duplicate child nodes check here, because it's assumed
+    // the previous node didn't have any duplicate children
+    // also it is assumed that the children nodes will be added sequentially
     void insert(byte key, Node child){
+        int unsignedKey = Byte.toUnsignedInt(key);
         if (count < 48) {
-            int unsignedKey = Byte.toUnsignedInt(key);
             keyIndex[unsignedKey] = (byte) count;
             children[count] = child;
             count++;
@@ -236,10 +248,6 @@ class Node256 extends Node {
 
     @Override
     InsertResult insert(byte key) {
-        if(count == 256){
-            throw new IllegalStateException("Node256 is full and cannot add more children.");
-        }
-
         int unsignedKey = Byte.toUnsignedInt(key);
 
         // Insert the child if it's not already present
@@ -250,14 +258,15 @@ class Node256 extends Node {
         return new InsertResult(children[unsignedKey], null);
     }
 
+    // this method will be used by the Node16 object when it has reached
+    // the maximum number of 16 children, and it needs to add them to this new node
+    // therefore there will be no duplicate child nodes check here, because it's assumed
+    // the previous node didn't have any duplicate children
+    // also it is assumed that the children nodes will be added sequentially
     void insert(byte key, Node child){
-        if(count < 256){
-            int unsignedKey = Byte.toUnsignedInt(key);
-            children[unsignedKey] = child;
-            count++;
-        } else {
-            throw new IllegalStateException("Node256 is full and cannot add more children.");
-        }
+        int unsignedKey = Byte.toUnsignedInt(key);
+        children[unsignedKey] = child;
+        count++;
     }
 
 
@@ -284,9 +293,6 @@ public class AdaptiveRadixTree {
 
 
     public void insert(String word, long linkIndex) {
-        if(word == null) throw new NullPointerException("Word cannot be null.");
-        if(linkIndex < 0) throw new IllegalArgumentException("Link index cannot be negative.");
-
         byte[] wordBytes = word.getBytes(); // get bytes from word
         Node grandfatherNode = null; // track grandfather node of currentNode to update a child in case of a node upgrade
         Node previousNode = null; // track father node of currentNode to update the linkIndices with the provided linkIndex
@@ -297,7 +303,6 @@ public class AdaptiveRadixTree {
                               // this way if the node doesn't exist, only nextNode will be null, instead of currentNode being null, which is critical for this algorithm
 
         // for each byte of the word
-        int count = 0;
         for(byte b: wordBytes){
             grandfatherNode = previousNode; // store grandfatherNode (null, if the search depth is smaller than 2)
             previousNode = currentNode; // store fatherNode (null, if the search depth is smaller than 1)
@@ -309,22 +314,64 @@ public class AdaptiveRadixTree {
                 currentNode = insertResult.node; // assign it to currentNode
                 if(insertResult.upgradedNode != null){ // if there has been a node upgrade
                     if(grandfatherNode != null){ // if the grandfatherNode exists (meaning the node we need to update is not the root)
-                        // update the father node of the upgraded node, swapping the old node with the upgraded one
-                        grandfatherNode.updateNodeReference(wordBytes[count-1], insertResult.upgradedNode); //wordBytes[count-1] represents the byte of the previous character in the previous node that needs to be replaced with the upgraded node
+                        // update the father node of the upgraded node, swaping the old node with the upgraded one
+                        grandfatherNode.updateNodeReference(wordBytes[grandfatherNode.count-1], insertResult.upgradedNode);
                     } else { // if the grandfatherNode is null, that means the root needs to be updated
                         this.root = insertResult.upgradedNode;
                     }
                 }
             }
-            count++;
         }
         if(!previousNode.linkIndices.contains(linkIndex)) previousNode.linkIndices.add(linkIndex); // insert the new link Index only if it doesn't exist already
         previousNode.isFinalWord = true; // set node as Final Word
     }
+    /*
+    public void insert(String word, long linkIndex) {
+        byte[] wordBytes = word.getBytes();
+        int count=0;
+        Node previousNode = null;
+        Node currentNode = root;
+        Node nextNode = root;
+        for(byte b: wordBytes){
+            count++;
+            previousNode = currentNode;
+            if((nextNode = currentNode.find(b)) != null){
+                currentNode = nextNode;
+            } else {
+                InsertResult insertResult = currentNode.insert(b);
+                if(previousNode != null && insertResult.upgradedNode != null){
+                    byte[] slicedWordBytes = new byte[count];
+                    System.arraycopy(wordBytes, 0, slicedWordBytes, 0, count);
+                    updateNodeReference(slicedWordBytes, insertResult.upgradedNode);
+                }
+                //currentNode = currentNode.insert(b);
+                currentNode = insertResult.node;
+            }
+        }
+        assert previousNode != null;
+        if(!previousNode.linkIndices.contains(linkIndex)) previousNode.linkIndices.add(linkIndex);
+        previousNode.isFinalWord = true;
+    }
+
+
+    private void updateNodeReference(byte[] slicedWordBytes, Node upgradedNode){
+        Node currentNode = root;
+        Node previousNode = null;
+        Node grandfatherNode = null;
+        byte count = 0;
+        for(byte b: slicedWordBytes){
+            grandfatherNode = previousNode;
+            previousNode = currentNode;
+            currentNode = currentNode.find(b);
+            count++;
+        }
+        if(count == 0) return;
+        if(previousNode == root) this.root = upgradedNode;
+        if(grandfatherNode != null) grandfatherNode.updateNodeReference(slicedWordBytes[count-2], upgradedNode);
+    }*/
 
 
     public ArrayList<Long> find(String word) {
-        if(word == null) throw new NullPointerException("Word cannot be null.");
         byte[] wordBytes = word.getBytes();
         Node previousNode = null;
         Node currentNode = root;
@@ -340,21 +387,5 @@ public class AdaptiveRadixTree {
         } else {
             return null;
         }
-    }
-
-
-    // return node that contains the given word
-    public Node findNode(String word){
-        if(word == null) throw new NullPointerException("Word cannot be null.");
-        byte[] wordBytes = word.getBytes();
-        Node previousNode = null;
-        Node currentNode = root;
-        for(byte b: wordBytes){
-            previousNode = currentNode;
-            if((currentNode = currentNode.find(b)) == null){
-                return null;
-            }
-        }
-        return previousNode;
     }
 }
