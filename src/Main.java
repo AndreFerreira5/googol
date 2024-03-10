@@ -8,27 +8,6 @@ public class Main {
     public static final int CRAWLING_MAX_DEPTH = 3;
 
     public static void main(String[] args) throws InterruptedException {
-        AdaptiveRadixTree ART = new AdaptiveRadixTree();
-        ART.insert("Java", 1);
-        ART.insert("Jeva", 2);
-        ART.insert("Jiva", 3);
-        ART.insert("Jova", 4);
-        ART.insert("Juva", 5);
-        ART.insert("Xono", 6);
-        ART.insert("Mino", 7);
-        ART.insert("Trino", 8);
-        ART.insert("Quino", 9);
-        System.out.println(ART.find("Java"));
-        System.out.println(ART.find("Jeva"));
-        System.out.println(ART.find("Jiva"));
-        System.out.println(ART.find("Jova"));
-        System.out.println(ART.find("Juva"));
-        System.out.println(ART.find("Xono"));
-        System.out.println(ART.find("Mino"));
-        System.out.println(ART.find("Trino"));
-        System.out.println(ART.find("Quino"));
-        ART.findNode("J");
-        System.exit(0);
         LinkedBlockingDeque<Url> deque = new LinkedBlockingDeque<>();
         Set<String> parsedUrls = new HashSet<>();
 
@@ -47,17 +26,7 @@ public class Main {
                                                         .build());
             downloaderThread.start();
         }
-
-
-
-        deque.add(new Url("https://medium.com/pythoneers/9-different-ways-to-embedded-code-in-medium-9213cb4c0a2e"));
-
-
         while(true){
-            //for(Url url : deque){
-            //    System.out.println(url.url);
-            //}
-            //System.out.println(parsedUrls);
             System.out.println("DEQUEUE: " + deque.size());
             System.out.println("PARSED URLS: " + parsedUrls.size());
             Thread.sleep(1*1000);

@@ -1,18 +1,19 @@
+import java.util.ArrayList;
 import java.util.UUID;
 
 public class IndexStorageBarrel {
-    private Trie trie;
+    private AdaptiveRadixTree art;
     public final UUID uuid = UUID.randomUUID();
 
     public IndexStorageBarrel(){
-        trie = new Trie();
+        art = new AdaptiveRadixTree();
     }
 
     public void insert(String word, int linkIndex){
-        trie.insert(word, linkIndex);
+        art.insert(word, linkIndex);
     }
 
-    public int[] getLinkIndices(String word){
-        return trie.getLinkIndices(word);
+    public ArrayList<Long> getLinkIndices(String word){
+        return art.find(word);
     }
 }
