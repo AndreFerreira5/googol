@@ -34,13 +34,7 @@ public class Main {
             barrelThread.start();
         }
 
-        deque.add(new Url("https://medium.com/pythoneers/9-different-ways-to-embedded-code-in-medium-9213cb4c0a2e"));
-
         while(true){
-            //for(Url url : deque){
-            //    System.out.println(url.url);
-            //}
-            //System.out.println(parsedUrls);
             System.out.println("DEQUEUE: " + deque.size());
             System.out.println("PARSED URLS: " + parsedUrls.size());
             Thread.sleep(1*1000);

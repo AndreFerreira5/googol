@@ -1,11 +1,12 @@
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 
 public class IndexStorageBarrel extends Thread{
-    private final Trie trie;
+    private AdaptiveRadixTree art;
     public final UUID uuid = UUID.randomUUID();
     private final String multicastAddress;
     private final int port;
@@ -56,7 +57,7 @@ public class IndexStorageBarrel extends Thread{
     }
 
     public IndexStorageBarrel(String multicastAddress, int port){
-        this.trie = new Trie();
+        this.art = new AdaptiveRadixTree();
         this.multicastAddress = multicastAddress;
         this.port = port;
     }
@@ -80,13 +81,12 @@ public class IndexStorageBarrel extends Thread{
         }
     }
 
+
     public void insert(String word, int linkIndex){
-        // insert provided word with provided link index in the trie object
-        // always converting the word to lowercase
-        trie.insert(word.toLowerCase(), linkIndex);
+        art.insert(word, linkIndex);
     }
 
-    public int[] getLinkIndices(String word){
-        return trie.getLinkIndices(word);
+    public ArrayList<Long> getLinkIndices(String word){
+        return art.find(word);
     }
 }
