@@ -27,10 +27,13 @@ jobs:
       run: wget -P lib/ https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.9.3/junit-platform-console-standalone-1.9.3.jar
 
     - name: Compile Source Files
-      run: javac -d out/production/ -cp lib/junit-platform-console-standalone-1.9.3.jar $(find ./src -name "*.java")
+      run: |
+        javac -d out/production/ -cp "lib/*" $(find ./src -name "*.java")
 
     - name: Compile Test Files
-      run: javac -d out/production/ -cp out/production/:lib/junit-platform-console-standalone-1.9.3.jar $(find ./test -name "*Test.java")
+      run: |
+        javac -d out/production/ -cp out/production/:lib/* $(find ./test -name "*Test.java")
 
     - name: Run JUnit Tests
-      run: java -jar lib/junit-platform-console-standalone-1.9.3.jar --class-path out/production/ --scan-classpath
+      run: |
+        java -jar lib/junit-platform-console-standalone-1.9.3.jar --class-path out/production/:lib/* --scan-classpath
