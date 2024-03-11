@@ -14,6 +14,34 @@ public class IndexStorageBarrel extends Thread{
     private final int retryDelay = 5;
 
 
+    private int getMulticastMessageSize(MulticastSocket socket){
+        byte[] messageSize = new byte[Integer.BYTES];
+        DatagramPacket packet = new DatagramPacket(messageSize, messageSize.length);
+        try{
+            socket.receive(packet);
+        } catch (IOException e){
+            log("Error receiving multicast message size.");
+            // TODO trigger sync between barrels
+        }
+
+        return messageSize[0];
+    }
+
+
+    private String getMulticastMessage(MulticastSocket socket, int messageSize){
+        byte[] dataBuffer = new byte[messageSize];
+        DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
+        try{
+            socket.receive(packet);
+        } catch (IOException e){
+            log("Error receiving multicast message size.");
+            // TODO trigger sync between barrels
+        }
+
+        return new String(packet.getData(), 0, packet.getLength());
+    }
+
+
     private MulticastSocket setupMulticastConn(){
         MulticastSocket socket = null;
         int attempts = 0;
@@ -49,7 +77,16 @@ public class IndexStorageBarrel extends Thread{
         log("UP!");
 
         MulticastSocket socket = setupMulticastConn();
+        if(socket == null) return;
         log("Successfully joined multicast group!");
+
+        while(true){
+            /* Two-Step Reception */
+            int messageSize = getMulticastMessageSize(socket);
+            String message = getMulticastMessage(socket, messageSize);
+            log("Received message: " + message);
+            // TODO treat the data and send it to barrel, if succeded
+        }
     }
 
     private void log(String text){

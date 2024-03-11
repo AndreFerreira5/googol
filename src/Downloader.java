@@ -1,3 +1,4 @@
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.Collections;
 import org.jsoup.Jsoup;
@@ -86,13 +87,13 @@ public class Downloader  extends Thread{
         // TODO treat arguments and store them to barrels using multicast catching all exceptions and continuing accordingly
     }
 
-    private void parseUrl(Url url){
+    private String[] parseUrl(Url url){
         String link = url.url;
         int depth = url.depth;
 
         if(parsedUrls.contains(link) || depth > crawlingMaxDepth) {// TODO later integrate this with the barrels to make sure the barrels contain the url info (it's more robust this way)
             //log(url + " already parsed! skipping...");
-            return;
+            return null;
         }
 
         Document doc;
@@ -119,9 +120,12 @@ public class Downloader  extends Thread{
             String keywords = doc.select("meta[name=keywords]").attr("content");
             String text = doc.body().text();
 
-            storeUrlToBarrels(title, description, keywords, text);
             parsedUrls.add(link);
+            return new String[]{title, description, keywords, text};
+            //storeUrlToBarrels(title, description, keywords, text);
         } catch (IOException e) {
+            // TODO trigger barrel sync
+            return null;
             //log("Error parsing " + url + "! Skipping...");
         }
     }
@@ -161,6 +165,7 @@ public class Downloader  extends Thread{
 
         // setup multicast server
         MulticastSocket socket = setupMulticastServer();
+        if(socket == null) return;
         log("Successfully connected to multicast server!");
 
         boolean interrupted = false;
@@ -169,8 +174,10 @@ public class Downloader  extends Thread{
 
                 // get url from deque
                 Url url = deque.take();
-                parseUrl(url);
-                // TODO send data to ISB through Multicast
+                String[] parsedUrl = parseUrl(url);
+                if(parsedUrl == null) continue;
+
+                //sendParsedUrlToBarrels(socket, parsedUrl, linkIndex);
             } catch (InterruptedException e){
                 log("Interrupted! Exiting...");
                 interrupted = true;
