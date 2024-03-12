@@ -8,6 +8,20 @@ public class Main {
     public static final int CRAWLING_MAX_DEPTH = 3;
 
     public static void main(String[] args) throws InterruptedException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        //art.insert("word1", 69);
+        //art.insert("word2", 6969);
+        //art.insert("word3", 696969);
+        //art.insert("word4", 69696969);
+        //art.insert("derivative", 1111);
+        //art.exportART();
+        art.importART();
+        System.out.println(art.find("word1"));
+        System.out.println(art.find("word2"));
+        System.out.println(art.find("word3"));
+        System.out.println(art.find("word4"));
+        System.out.println(art.find("derivative"));
+        System.exit(0);
         LinkedBlockingDeque<Url> deque = new LinkedBlockingDeque<>();
         Set<String> parsedUrls = new HashSet<>();
 

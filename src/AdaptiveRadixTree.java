@@ -1,5 +1,10 @@
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.nio.ByteOrder;
 
 class InsertResult{
     public Node node;
@@ -21,6 +26,9 @@ abstract class Node {
     boolean isFinalWord = false;
 
     abstract void updateNodeReference(byte key, Node upgradedNode);
+    abstract byte[] getKeys();
+    abstract Node[] getChildren();
+    abstract void setChildren(Node[] children);
 }
 
 
@@ -87,6 +95,23 @@ class Node4 extends Node {
             }
         }
         return null; // if node not found
+    }
+
+
+    @Override
+    byte[] getKeys(){
+        return keys;
+    }
+
+
+    @Override
+    Node[] getChildren(){
+        return children;
+    }
+
+    @Override
+    void setChildren(Node[] children){
+        this.children = children;
     }
 }
 
@@ -156,6 +181,22 @@ class Node16 extends Node {
         }
     }
 
+
+    @Override
+    byte[] getKeys(){
+        return keys;
+    }
+
+
+    @Override
+    Node[] getChildren(){
+        return children;
+    }
+
+    @Override
+    void setChildren(Node[] children){
+        this.children = children;
+    }
 }
 
 
@@ -224,6 +265,23 @@ class Node48 extends Node {
         int unsignedKey = Byte.toUnsignedInt(key);
         children[keyIndex[unsignedKey]] = upgradedNode;
     }
+
+
+    @Override
+    byte[] getKeys(){
+        return keyIndex;
+    }
+
+
+    @Override
+    Node[] getChildren(){
+        return children;
+    }
+
+    @Override
+    void setChildren(Node[] children){
+        this.children = children;
+    }
 }
 
 
@@ -272,11 +330,43 @@ class Node256 extends Node {
         int unsignedKey = Byte.toUnsignedInt(key);
         children[unsignedKey] = upgradedNode;
     }
+
+
+    @Override
+    byte[] getKeys() {
+        ArrayList<Byte> keyList = new ArrayList<>();
+        for (int i = 0; i < children.length; i++) {
+            if (children[i] != null) {
+                // since `i` is an int, we need to cast it to byte before adding to the list
+                // this cast is safe because the keys in Node256 are essentially byte values
+                keyList.add((byte) i);
+            }
+        }
+
+        // convert ArrayList to byte array
+        byte[] keys = new byte[keyList.size()];
+        for (int i = 0; i < keyList.size(); i++) {
+            keys[i] = keyList.get(i);
+        }
+        return keys;
+    }
+
+
+    @Override
+    Node[] getChildren(){
+        return children;
+    }
+
+    @Override
+    void setChildren(Node[] children){
+        this.children = children;
+    }
 }
 
 
 public class AdaptiveRadixTree {
     private Node root;
+    private String filename = "art.bin";
 
     public AdaptiveRadixTree(){
         this.root = new Node4();
@@ -318,8 +408,8 @@ public class AdaptiveRadixTree {
             }
             count++;
         }
-        if(!previousNode.linkIndices.contains(linkIndex)) previousNode.linkIndices.add(linkIndex); // insert the new link Index only if it doesn't exist already
-        previousNode.isFinalWord = true; // set node as Final Word
+        if(!currentNode.linkIndices.contains(linkIndex)) currentNode.linkIndices.add(linkIndex); // insert the new link Index only if it doesn't exist already
+        currentNode.isFinalWord = true; // set node as Final Word
     }
 
 
@@ -334,9 +424,8 @@ public class AdaptiveRadixTree {
                 return null;
             }
         }
-        assert previousNode != null;
-        if(previousNode.isFinalWord){
-            return previousNode.linkIndices;
+        if(currentNode.isFinalWord){
+            return currentNode.linkIndices;
         } else {
             return null;
         }
@@ -356,5 +445,135 @@ public class AdaptiveRadixTree {
             }
         }
         return previousNode;
+    }
+
+
+    public void exportART() {
+        try(RandomAccessFile artFile = new RandomAccessFile(this.filename, "rw");){
+            exportNode(artFile, root);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    private void exportNode(RandomAccessFile artFile, Node node) throws IOException{
+        if(node == null) return;
+
+        int nodeType;
+        if(node instanceof Node4) nodeType = 0;
+        else if(node instanceof Node16) nodeType = 1;
+        else if(node instanceof Node48) nodeType = 2;
+        else if(node instanceof Node256) nodeType = 3;
+        else throw new IllegalStateException("Unexpected node type.");
+
+        int childrenNum = node.count;
+        boolean isFinalWord = node.isFinalWord;
+        int indicesNum = node.linkIndices.size();
+        byte[] keys = node.getKeys();
+        Node[] children = node.getChildren();
+
+        // nodeType + childrenNum + isFinalWord + indicesNum + linkIndices + keys (only allocate for existing keys)
+        byte[] bytes = new byte[Integer.BYTES + Integer.BYTES + 1 + Integer.BYTES + Long.BYTES*indicesNum + Byte.BYTES*childrenNum];
+        ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN); // little endian for x86 compatibility
+
+        buffer.putInt(nodeType);
+        buffer.putInt(childrenNum);
+        buffer.put((byte) (isFinalWord ? 1 : 0));
+        buffer.putInt(indicesNum);
+        for(long linkIndex: node.linkIndices){
+            buffer.putLong(linkIndex);
+        }
+        for(int i=0; i<childrenNum; i++){
+            buffer.put(keys[i]);
+        }
+        artFile.write(bytes);
+
+        for( Node childrenNode: children){
+            if(childrenNode == null) continue;
+            exportNode(artFile, childrenNode);
+        }
+    }
+
+
+    public void importART(){
+        try(RandomAccessFile artFile = new RandomAccessFile(this.filename, "rw");){
+            Node rootNode = parseNode(artFile);
+            importNode(artFile, rootNode);
+            this.root = rootNode;
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    private Node parseNode(RandomAccessFile artFile) throws IOException{
+        byte[] intBuffer = new byte[Integer.BYTES];
+        byte[] longBuffer = new byte[Long.BYTES];
+
+        artFile.read(intBuffer);
+        int nodeType = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+
+        Node node;
+        switch (nodeType){
+            case 0:
+                node = new Node4();
+                break;
+            case 1:
+                node = new Node16();
+                break;
+            case 2:
+                node = new Node48();
+                break;
+            case 3:
+                node = new Node256();
+                break;
+            default:
+                throw new IllegalStateException("Unexpected node type.");
+        }
+
+        artFile.read(intBuffer);
+        int childrenNum = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+
+        byte isFinalWord = artFile.readByte();
+
+        artFile.read(intBuffer);
+        int indicesNum = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+
+        ArrayList<Long> linkIndices = new ArrayList<>();
+        for(int i=0; i<indicesNum; i++){
+            artFile.read(longBuffer);
+            linkIndices.add(ByteBuffer.wrap(longBuffer).order(ByteOrder.LITTLE_ENDIAN).getLong());
+        }
+
+        byte[] keys = new byte[childrenNum];
+        artFile.read(keys);
+
+        node.linkIndices = linkIndices;
+        node.isFinalWord = isFinalWord != 0;
+        for (byte key : keys) {
+            node.insert(key);
+        }
+
+        return node;
+    }
+
+
+    private void importNode(RandomAccessFile artFile, Node parsedNode) throws IOException {
+        if (parsedNode == null) return;
+
+        Node[] parsedNodeChildren = parsedNode.getChildren();
+        for(int i=0; i<parsedNode.count; i++){
+            Node parsedChildNode = parseNode(artFile);
+            parsedNodeChildren[i] = parsedChildNode;
+            if(parsedNode.count > 0){
+                importNode(artFile, parsedChildNode);
+            }
+        }
+        parsedNode.setChildren(parsedNodeChildren);
     }
 }
