@@ -476,6 +476,8 @@ public class AdaptiveRadixTree {
         } catch (IOException e) {
             System.out.println("ERROR OPENING FILE: " + e + "\nStopping the exportation...");
         }
+
+        System.out.println("TREE EXPORTED SUCCESSFULLY TO FILE: " + this.filename);
     }
 
 
@@ -542,6 +544,7 @@ public class AdaptiveRadixTree {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        System.out.println("TREE IMPORTED SUCCESSFULLY FROM FILE: " + this.filename);
     }
 
 
