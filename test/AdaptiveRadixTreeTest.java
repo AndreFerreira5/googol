@@ -61,7 +61,8 @@ public class AdaptiveRadixTreeTest {
     @Test
     public void testRootNode4UpgradeToNode16(){
         final int childrenNum = 5; // 5 to exceed the children size of Node4 and make it upgrade to Node16
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -70,13 +71,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node16 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node16.class, art.findNode(words[0]));
+        assertInstanceOf(Node16.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode4UpgradeToNode16(){
         final int childrenNum = 5; // 5 to exceed the children size of Node4 and make it upgrade to Node16
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -85,13 +87,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node16 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node16.class, art.findNode(word[0]));
+        assertInstanceOf(Node16.class, art.findNode(prefix));
     }
 
     @Test
     public void testRootNode16UpgradeToNode48(){
         final int childrenNum = 17; // 17 to exceed the children size of Node16 and make it upgrade to Node48
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -100,13 +103,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node48 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node48.class, art.findNode(words[0]));
+        assertInstanceOf(Node48.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode16UpgradeToNode48(){
         final int childrenNum = 17; // 17 to exceed the children size of Node16 and make it upgrade to Node48
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -115,13 +119,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node48 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node48.class, art.findNode(word[0]));
+        assertInstanceOf(Node48.class, art.findNode(prefix));
     }
 
     @Test
     public void testRootNode48UpgradeToNode256(){
         final int childrenNum = 49; // 49 to exceed the children size of Node48 and make it upgrade to Node256
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -130,13 +135,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node256 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node256.class, art.findNode(words[0]));
+        assertInstanceOf(Node256.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode48UpgradeToNode256(){
         final int childrenNum = 49; // 49 to exceed the children size of Node48 and make it upgrade to Node256
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -145,7 +151,7 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node256 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node256.class, art.findNode(word[0]));
+        assertInstanceOf(Node256.class, art.findNode(prefix));
     }
 
 
@@ -219,9 +225,9 @@ public class AdaptiveRadixTreeTest {
     /* FINAL WORD TESTS */
     @Test
     public void testFinalWordFlag(){
-        String prefixWord = "test";
+        String prefixWord = "t1";
         long prefixLinkIndex = 1L;
-        String fullWord = "testing";
+        String fullWord = "t2";
         long fullLinkIndex = 2L;
 
         // insert prefix and full word
