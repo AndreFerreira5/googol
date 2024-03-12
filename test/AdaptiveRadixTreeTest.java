@@ -1,7 +1,12 @@
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.engine.*;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 public class AdaptiveRadixTreeTest {
@@ -61,7 +66,8 @@ public class AdaptiveRadixTreeTest {
     @Test
     public void testRootNode4UpgradeToNode16(){
         final int childrenNum = 5; // 5 to exceed the children size of Node4 and make it upgrade to Node16
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -70,13 +76,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node16 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node16.class, art.findNode(words[0]));
+        assertInstanceOf(Node16.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode4UpgradeToNode16(){
         final int childrenNum = 5; // 5 to exceed the children size of Node4 and make it upgrade to Node16
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -85,13 +92,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node16 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node16.class, art.findNode(word[0]));
+        assertInstanceOf(Node16.class, art.findNode(prefix));
     }
 
     @Test
     public void testRootNode16UpgradeToNode48(){
         final int childrenNum = 17; // 17 to exceed the children size of Node16 and make it upgrade to Node48
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -100,13 +108,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node48 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node48.class, art.findNode(words[0]));
+        assertInstanceOf(Node48.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode16UpgradeToNode48(){
         final int childrenNum = 17; // 17 to exceed the children size of Node16 and make it upgrade to Node48
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -115,13 +124,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node48 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node48.class, art.findNode(word[0]));
+        assertInstanceOf(Node48.class, art.findNode(prefix));
     }
 
     @Test
     public void testRootNode48UpgradeToNode256(){
         final int childrenNum = 49; // 49 to exceed the children size of Node48 and make it upgrade to Node256
-        String[] words = generateWordsWithSharedPrefix("", childrenNum); // generate single letter words, so they stay on the same node (root)
+        String prefix = "";
+        String[] words = generateWordsWithSharedPrefix(prefix, childrenNum); // generate single letter words, so they stay on the same node (root)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -130,13 +140,14 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the root node is a Node256 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node256.class, art.findNode(words[0]));
+        assertInstanceOf(Node256.class, art.findNode(prefix));
     }
 
     @Test
     public void testNode48UpgradeToNode256(){
         final int childrenNum = 49; // 49 to exceed the children size of Node48 and make it upgrade to Node256
-        String[] word = generateWordsWithSharedPrefix("a", childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
+        String prefix = "a";
+        String[] word = generateWordsWithSharedPrefix(prefix, childrenNum); // generate words bigger that have more than one letter, so they don't stay on the root (in this case 2 letter words)
         long[] linkIndices = generateLinkIndices(childrenNum); // generate linear link indices for each word
 
         // insert each word in the tree
@@ -145,7 +156,7 @@ public class AdaptiveRadixTreeTest {
         }
 
         // verify that the node is a Node256 (searching for the node that contains any of the previously inserted words)
-        assertInstanceOf(Node256.class, art.findNode(word[0]));
+        assertInstanceOf(Node256.class, art.findNode(prefix));
     }
 
 
@@ -219,9 +230,9 @@ public class AdaptiveRadixTreeTest {
     /* FINAL WORD TESTS */
     @Test
     public void testFinalWordFlag(){
-        String prefixWord = "test";
+        String prefixWord = "t1";
         long prefixLinkIndex = 1L;
-        String fullWord = "testing";
+        String fullWord = "t2";
         long fullLinkIndex = 2L;
 
         // insert prefix and full word
@@ -276,4 +287,107 @@ public class AdaptiveRadixTreeTest {
         }
     }
 
+
+    /* IMPORT + EXPORT TESTS */
+    @Test
+    void testExportImportEmptyTree() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportEmptyTree.bin");
+        art.exportART();
+        art.importART();
+        assertNull(art.find("anyWord"), "Imported tree should be empty and return null for any search.");
+    }
+
+    @Test
+    void testExportImportSingleEntry() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportSingleEntry.bin");
+        String testWord = "hello";
+        long linkIndex = 12345L;
+        art.insert(testWord, linkIndex);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportSingleEntry.bin");
+        importedArt.importART();
+        ArrayList<Long> linkIndices = importedArt.find(testWord);
+        assertNotNull(linkIndices, "Imported tree should contain the inserted word.");
+        assertTrue(linkIndices.contains(linkIndex), "Imported tree should contain the correct link index for the inserted word.");
+    }
+
+    @Test
+    void testExportImportComplexTree() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportComplexTree.bin");
+        art.insert("hello", 1);
+        art.insert("world", 2);
+        art.insert("hell", 3);
+        art.insert("word", 4);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportComplexTree.bin");
+        importedArt.importART();
+        assertNotNull(importedArt.find("hello"), "Imported tree should contain 'hello'.");
+        assertNotNull(importedArt.find("world"), "Imported tree should contain 'world'.");
+        assertNull(importedArt.find("notexist"), "Imported tree should not contain 'notexist'.");
+    }
+
+    @Test
+    void testExportImportPreservesIsFinalWord() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportPreservesIsFinalWord.bin");
+        art.insert("hello", 1);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportPreservesIsFinalWord.bin");
+        importedArt.importART();
+        Node node = importedArt.findNode("hello");
+        assertNotNull(node, "Imported tree should contain 'hello'.");
+        assertTrue(node.isFinalWord, "'hello' should be marked as a final word in the imported tree.");
+    }
+
+    @Test
+    void testExportImportPreservesLinkIndices() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportPreservesLinkIndices.bin");
+        art.insert("hello", 1);
+        art.insert("hello", 2);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportPreservesLinkIndices.bin");
+        importedArt.importART();
+        ArrayList<Long> linkIndices = importedArt.find("hello");
+        assertNotNull(linkIndices, "Imported tree should contain 'hello'.");
+        assertTrue(linkIndices.contains(1L) && linkIndices.contains(2L), "'hello' should have link indices 1 and 2 in the imported tree.");
+    }
+
+    @Test
+    void testFileNotFound() {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("nonExistentFile.bin");
+        Exception exception = assertThrows(IOException.class, art::importART);
+    }
+
+
+    @AfterAll
+    public static void cleanup(){
+        deleteFile("testExportImportEmptyTree.bin");
+        deleteFile("testExportImportSingleEntry.bin");
+        deleteFile("testExportImportComplexTree.bin");
+        deleteFile("testExportImportPreservesIsFinalWord.bin");
+        deleteFile("testExportImportPreservesLinkIndices.bin");
+        deleteFile("nonExistentFile.bin");
+    }
+
+
+    private static void deleteFile(String filename) {
+        try {
+            Files.deleteIfExists(Paths.get(filename));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
