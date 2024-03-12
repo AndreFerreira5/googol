@@ -444,7 +444,7 @@ public class AdaptiveRadixTree {
                 return null;
             }
         }
-        return previousNode;
+        return currentNode;
     }
 
 
