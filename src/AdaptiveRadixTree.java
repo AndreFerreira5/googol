@@ -368,6 +368,11 @@ public class AdaptiveRadixTree {
     private Node root;
     private String filename = "art.bin";
 
+    private final int NODE4_TYPE = 0;
+    private final int NODE16_TYPE = 1;
+    private final int NODE48_TYPE = 2;
+    private final int NODE256_TYPE = 3;
+
     public AdaptiveRadixTree(){
         this.root = new Node4();
     }
@@ -462,7 +467,7 @@ public class AdaptiveRadixTree {
     *   keys: childrenNum * BYTE (childrenNum * 1 Byte)                              *
     *                                                                                *
     **********************************************************************************/
-    public void exportART() {
+    public void exportART() throws IOException{
         // try to open the file
         try(RandomAccessFile artFile = new RandomAccessFile(this.filename, "rw");){
             try{
@@ -471,12 +476,9 @@ public class AdaptiveRadixTree {
             catch(Exception e){
                 System.out.println("ERROR EXPORTING ROOT NODE: " + e + "\nStopping the exportation...");
             }
-        } catch (FileNotFoundException e) {
-            System.out.println("TREE FILE NOT FOUND! Stopping the exportation...");
         } catch (IOException e) {
-            System.out.println("ERROR OPENING FILE: " + e + "\nStopping the exportation...");
+            throw new IOException(e.getMessage());
         }
-
         System.out.println("TREE EXPORTED SUCCESSFULLY TO FILE: " + this.filename);
     }
 
@@ -488,10 +490,10 @@ public class AdaptiveRadixTree {
 
         // get node class
         int nodeType;
-        if(node instanceof Node4) nodeType = 0;
-        else if(node instanceof Node16) nodeType = 1;
-        else if(node instanceof Node48) nodeType = 2;
-        else if(node instanceof Node256) nodeType = 3;
+        if(node instanceof Node4) nodeType = NODE4_TYPE;
+        else if(node instanceof Node16) nodeType = NODE16_TYPE;
+        else if(node instanceof Node48) nodeType = NODE48_TYPE;
+        else if(node instanceof Node256) nodeType = NODE256_TYPE;
         else throw new IllegalStateException("Unexpected node type.");
 
         // get node info
@@ -534,15 +536,13 @@ public class AdaptiveRadixTree {
     }
 
 
-    public void importART(){
+    public void importART() throws IOException{
         try(RandomAccessFile artFile = new RandomAccessFile(this.filename, "rw");){
             Node rootNode = parseNode(artFile);
             importNode(artFile, rootNode);
             this.root = rootNode;
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new IOException(e);
         }
         System.out.println("TREE IMPORTED SUCCESSFULLY FROM FILE: " + this.filename);
     }
@@ -560,16 +560,16 @@ public class AdaptiveRadixTree {
         // create node based on the nodeType
         Node node;
         switch (nodeType){
-            case 0:
+            case NODE4_TYPE:
                 node = new Node4();
                 break;
-            case 1:
+            case NODE16_TYPE:
                 node = new Node16();
                 break;
-            case 2:
+            case NODE48_TYPE:
                 node = new Node48();
                 break;
-            case 3:
+            case NODE256_TYPE:
                 node = new Node256();
                 break;
             default:
@@ -624,5 +624,10 @@ public class AdaptiveRadixTree {
             }
         }
         parsedNode.setChildren(parsedNodeChildren); // update parsed node children with parsed children
+    }
+
+
+    public void setFilename(String filename){
+        this.filename = filename;
     }
 }

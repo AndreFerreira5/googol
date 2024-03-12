@@ -1,7 +1,12 @@
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.engine.*;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 public class AdaptiveRadixTreeTest {
@@ -282,4 +287,107 @@ public class AdaptiveRadixTreeTest {
         }
     }
 
+
+    /* IMPORT + EXPORT TESTS */
+    @Test
+    void testExportImportEmptyTree() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportEmptyTree.bin");
+        art.exportART();
+        art.importART();
+        assertNull(art.find("anyWord"), "Imported tree should be empty and return null for any search.");
+    }
+
+    @Test
+    void testExportImportSingleEntry() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportSingleEntry.bin");
+        String testWord = "hello";
+        long linkIndex = 12345L;
+        art.insert(testWord, linkIndex);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportSingleEntry.bin");
+        importedArt.importART();
+        ArrayList<Long> linkIndices = importedArt.find(testWord);
+        assertNotNull(linkIndices, "Imported tree should contain the inserted word.");
+        assertTrue(linkIndices.contains(linkIndex), "Imported tree should contain the correct link index for the inserted word.");
+    }
+
+    @Test
+    void testExportImportComplexTree() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportComplexTree.bin");
+        art.insert("hello", 1);
+        art.insert("world", 2);
+        art.insert("hell", 3);
+        art.insert("word", 4);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportComplexTree.bin");
+        importedArt.importART();
+        assertNotNull(importedArt.find("hello"), "Imported tree should contain 'hello'.");
+        assertNotNull(importedArt.find("world"), "Imported tree should contain 'world'.");
+        assertNull(importedArt.find("notexist"), "Imported tree should not contain 'notexist'.");
+    }
+
+    @Test
+    void testExportImportPreservesIsFinalWord() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportPreservesIsFinalWord.bin");
+        art.insert("hello", 1);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportPreservesIsFinalWord.bin");
+        importedArt.importART();
+        Node node = importedArt.findNode("hello");
+        assertNotNull(node, "Imported tree should contain 'hello'.");
+        assertTrue(node.isFinalWord, "'hello' should be marked as a final word in the imported tree.");
+    }
+
+    @Test
+    void testExportImportPreservesLinkIndices() throws IOException {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("testExportImportPreservesLinkIndices.bin");
+        art.insert("hello", 1);
+        art.insert("hello", 2);
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("testExportImportPreservesLinkIndices.bin");
+        importedArt.importART();
+        ArrayList<Long> linkIndices = importedArt.find("hello");
+        assertNotNull(linkIndices, "Imported tree should contain 'hello'.");
+        assertTrue(linkIndices.contains(1L) && linkIndices.contains(2L), "'hello' should have link indices 1 and 2 in the imported tree.");
+    }
+
+    @Test
+    void testFileNotFound() {
+        AdaptiveRadixTree art = new AdaptiveRadixTree();
+        art.setFilename("nonExistentFile.bin");
+        Exception exception = assertThrows(IOException.class, art::importART);
+    }
+
+
+    @AfterAll
+    public static void cleanup(){
+        deleteFile("testExportImportEmptyTree.bin");
+        deleteFile("testExportImportSingleEntry.bin");
+        deleteFile("testExportImportComplexTree.bin");
+        deleteFile("testExportImportPreservesIsFinalWord.bin");
+        deleteFile("testExportImportPreservesLinkIndices.bin");
+        deleteFile("nonExistentFile.bin");
+    }
+
+
+    private static void deleteFile(String filename) {
+        try {
+            Files.deleteIfExists(Paths.get(filename));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
