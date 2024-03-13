@@ -135,12 +135,10 @@ public class Downloader  extends Thread{
 
             // return new parsed url object
             return new ParsedUrl(link, parsedUrlsNum, title, description, text);
-        } catch (IOException e) {
-            log(e.getMessage());
+        } catch (IOException e) { // TODO notify user that the url he requested is invalid
             // TODO trigger barrel sync
             return null;
         } catch (Exception e){
-            log(e.getMessage());
             return null;
         }
     }
