@@ -1,15 +1,14 @@
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicLong;
 
-public class Main {
-    private static final int DOWNLOADER_THREADS_NUM = 3;
+public class Gateway {
+    private static final int DOWNLOADER_THREADS_NUM = 20;
     private static final int BARRELS_NUM = 3;
     public static final int CRAWLING_MAX_DEPTH = 3;
-    public static final Long PARSED_URLS = 0L;
+    public static AtomicLong PARSED_URLS = new AtomicLong();
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
     public static final int PORT = 4322;
 
@@ -38,20 +37,20 @@ public class Main {
         AdaptiveRadixTree art = new AdaptiveRadixTree();
         importART(art);
 
-        LinkedBlockingDeque<Url> deque = new LinkedBlockingDeque<>();
-        ConcurrentHashMap<ParsedUrlKeyPair, Url> parsedUrlMap = new ConcurrentHashMap<>();
-        ConcurrentHashMap<String, ParsedUrlKeyPair> urlParsedUrlKeyPairMap = new ConcurrentHashMap<>();
-        ConcurrentHashMap<Long, ParsedUrlKeyPair> longParsedUrlKeyPairMap = new ConcurrentHashMap<>();
-
-        Set<String> parsedUrls = new HashSet<>();
+        LinkedBlockingDeque<RawUrl> deque = new LinkedBlockingDeque<>();
+        ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
+        ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
+        ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap = new ConcurrentHashMap<>();
 
         int i;
         for(i=0; i<DOWNLOADER_THREADS_NUM; i++){
             Thread downloaderThread = new Thread(new Downloader.Builder()
                     .deque(deque)
-                    .parsedUrls(parsedUrls)
+                    .parsedUrlsMap(parsedUrlsMap)
+                    .urlToUrlKeyPairMap(urlToUrlKeyPairMap)
+                    .idToUrlKeyPairMap(idToUrlKeyPairMap)
                     .crawlingMaxDepth(CRAWLING_MAX_DEPTH)
-                    .crawlingStrategy(new BFSStartegy())
+                    .crawlingStrategy(new BFSStartegy()) // Breath First Search - can be changed to DFS
                     .multicastAddress(MULTICAST_ADDRESS)
                     .port(PORT)
                     .build());
@@ -68,7 +67,7 @@ public class Main {
 
         while(true){
             System.out.println("DEQUEUE: " + deque.size());
-            System.out.println("PARSED URLS: " + parsedUrls.size());
+            System.out.println("PARSED URLS: " + parsedUrlsMap.size());
             Thread.sleep(1*1000);
         }
     }
