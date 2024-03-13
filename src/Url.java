@@ -32,7 +32,7 @@ public class Url {
             throw new InvalidDepthException("Invalid Url depth: " + depth + ". Must be between " + MIN_DEPTH + " and " + MAX_DEPTH + ".");
     }
 
-    class InvalidDepthException extends RuntimeException {
+    static class InvalidDepthException extends RuntimeException {
         public InvalidDepthException(String message) {
             super(message);
         }
