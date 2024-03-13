@@ -14,7 +14,7 @@ public class Downloader  extends Thread{
     private final Set<String> parsedUrls;
     private final LinkedBlockingDeque<Url> deque;
     private final int CRAWLING_MAX_DEPTH;
-    private CrawlingStrategy crawlingStrategy;
+    private final CrawlingStrategy crawlingStrategy;
 
     // constructor with all downloader parameters
     private Downloader(LinkedBlockingDeque<Url> deque, Set<String> parsedUrls, int CRAWLING_MAX_DEPTH, CrawlingStrategy crawlingStrategy) {

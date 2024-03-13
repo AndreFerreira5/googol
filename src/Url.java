@@ -3,6 +3,7 @@ import java.net.MalformedURLException;
 
 public class Url {
     public String url;
+    public Long id;
     public int depth;
     private static final int MIN_DEPTH = 0;
     private static final int MAX_DEPTH = Main.CRAWLING_MAX_DEPTH;
