@@ -1,3 +1,9 @@
+import java.net.*;
+import java.nio.*;
+import java.nio.charset.StandardCharsets;
+import java.util.function.BiConsumer;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -25,6 +31,7 @@ public class Downloader  extends Thread{
     private final int port;
     private final int multicastServerConnectMaxRetries = 5;
     private final int retryDelay = 5;
+    private final char DELIMITER = Gateway.DELIMITER;
 
     // constructor with all downloader parameters
     private Downloader(LinkedBlockingDeque<RawUrl> deque, ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap, ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap, ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap, int crawlingMaxDepth, CrawlingStrategy crawlingStrategy, String multicastAddress, int port) {
@@ -144,16 +151,30 @@ public class Downloader  extends Thread{
     }
 
 
-    private void indexWordsParsedUrl(ParsedUrl parsedUrl){
+    private ArrayList<String> indexWordsParsedUrl(ParsedUrl parsedUrl){
         Long id = parsedUrl.id;
         String text = parsedUrl.text;
 
-        for(String word : text.split("\\s+")){
-            //TODO send via multicast word and url id to barrels
+        ArrayList<String> buffer = new ArrayList<>();
+
+        // start the buffer with the url id
+        buffer.add(id.toString() + DELIMITER);
+
+        // hashset to keep track of unique words
+        HashSet<String> wordsSet = new HashSet<>();
+
+        // append all unique words to the buffer
+        for(String word : text.replaceAll("\\W+", " ").trim().split("\\s+")){
+            if (!wordsSet.contains(word)) {
+                buffer.add(word + DELIMITER);
+                wordsSet.add(word); // add the word to the hashset to track uniqueness
+            }
         }
 
         // remove text from object as it is not necessary anymore
         parsedUrl.cleanText();
+
+        return buffer;
     }
 
 
@@ -162,8 +183,9 @@ public class Downloader  extends Thread{
         int attempts = 0;
         while(attempts < multicastServerConnectMaxRetries){
             try{
-                socket = new MulticastSocket();
+                socket = new MulticastSocket(port);
                 InetAddress group = InetAddress.getByName(multicastAddress);
+                socket.joinGroup(group);
                 return socket;
             } catch (IOException e){
                 log("Error setting up multicast server! Retrying in "+ retryDelay +"s...");
@@ -186,6 +208,96 @@ public class Downloader  extends Thread{
     }
 
 
+    private void transmitToBarrels(ArrayList<String> buffer, Long id, MulticastSocket socket) {
+        // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
+        final int MAX_PACKET_SIZE = 65507;
+
+        BiConsumer<ByteBuffer, Integer> sendPacket = (byteBuffer, size) -> {
+            try {
+                InetAddress group = InetAddress.getByName(multicastAddress);
+                DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                socket.send(packet);
+            } catch (IOException e) {
+                log("Error transmitting to barrels. Retrying in " + retryDelay + "s...");
+                try {
+                    Thread.sleep(retryDelay); // wait before retrying
+                    InetAddress group = InetAddress.getByName(multicastAddress);
+                    DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                    socket.send(packet);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log("Interrupted during retry wait! Interrupting...");
+                    interrupt();
+                } catch (IOException ex) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+
+        ByteBuffer dataBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE);
+        int currentSize = 0;
+
+        byte[] idBytes = (id.toString() + DELIMITER).getBytes(StandardCharsets.UTF_8);
+        //dataBuffer.put(idBytes);
+        //currentSize += idBytes.length;
+        for (String s : buffer) {
+            byte[] messageBytes = s.getBytes(StandardCharsets.UTF_8);
+            if (currentSize + messageBytes.length > MAX_PACKET_SIZE) {
+                // Send current buffer and reset for next chunk
+                sendPacket.accept(dataBuffer, currentSize);
+                dataBuffer.clear();
+                dataBuffer.put(idBytes);
+                currentSize = idBytes.length;
+            }
+            dataBuffer.put(messageBytes);
+            currentSize += messageBytes.length;
+        }
+
+        // Send any remaining data
+        if (currentSize > 0) {
+            sendPacket.accept(dataBuffer, currentSize);
+        }
+
+
+
+        /*byte[] dataBuffer = new byte[buffer.size()];
+        for (int i = 0; i < buffer.size(); i++) {
+            dataBuffer[i] = buffer.get(i).getBytes()[0];
+        }*/
+
+        /*
+        // Calculate the total size needed for all strings in bytes
+        int totalSize = buffer.stream().mapToInt(String::length).sum();
+        ByteBuffer dataBuffer = ByteBuffer.allocate(totalSize);
+
+        // Add each string to the buffer
+        for (String s : buffer) {
+            dataBuffer.put(s.getBytes(StandardCharsets.UTF_8));
+        }
+
+        try{
+            InetAddress group = InetAddress.getByName(multicastAddress);
+            DatagramPacket packet = new DatagramPacket(dataBuffer.array(), dataBuffer.position(), group, port);
+            socket.send(packet);
+        } catch (IOException e){
+            log("Error transmitting to barrels. Retrying in "+ retryDelay +"s...");
+            try {
+                Thread.sleep(retryDelay); // wait before retrying
+                InetAddress group = InetAddress.getByName(multicastAddress);
+                DatagramPacket packet = new DatagramPacket(dataBuffer.array(), dataBuffer.position(), group, port);
+                socket.send(packet);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                log("Interrupted during retry wait! Interrupting...");
+                interrupt();
+            } catch (IOException ex) {
+                throw  new RuntimeException(e);
+            }
+        }*/
+
+    }
+
+
     public void run(){
         log("UP!");
 
@@ -205,7 +317,17 @@ public class Downloader  extends Thread{
                 }
 
                 // index words from parsed url
-                indexWordsParsedUrl(parsedUrl);
+                ArrayList<String> buffer = indexWordsParsedUrl(parsedUrl);
+
+                // transmit buffer through multicast
+                try{
+                    transmitToBarrels(buffer, parsedUrl.id, socket);
+                } catch (Exception e){
+                    log("Error transmitting to barrels. Skipping...");
+                    log(e.getMessage());
+                    continue;
+                }
+
 
                 String link = parsedUrl.url;
                 Long id = parsedUrl.id;

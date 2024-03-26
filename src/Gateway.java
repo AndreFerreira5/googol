@@ -1,41 +1,19 @@
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.ArrayList;
 
 public class Gateway {
-    private static final int DOWNLOADER_THREADS_NUM = 20;
-    private static final int BARRELS_NUM = 3;
-    public static final int CRAWLING_MAX_DEPTH = 3;
+    private static final int DOWNLOADER_THREADS_NUM = 0;
+    private static final int BARRELS_NUM = 1;
+    public static final int CRAWLING_MAX_DEPTH = 1;
     public static AtomicLong PARSED_URLS = new AtomicLong();
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
     public static final int PORT = 4322;
+    public static final char DELIMITER = '|';
 
-    private static void exportART(AdaptiveRadixTree art){
-        try{
-            art.exportART();
-        } catch(FileNotFoundException e){
-            System.out.println("TREE FILE NOT FOUND! Stopping the exportation...");
-        } catch(IOException e) {
-            System.out.println("ERROR OPENING FILE: " + e + "\nStopping the exportation...");
-        }
-    }
-
-
-    private static void importART(AdaptiveRadixTree art){
-        try{
-            art.importART();
-        } catch(FileNotFoundException e){
-            System.out.println("TREE FILE NOT FOUND! Skipping the importation...");
-        } catch(IOException e) {
-            System.out.println("ERROR OPENING FILE: " + e + "\nSkipping the importation...");
-        }
-    }
 
     public static void main(String[] args) throws InterruptedException {
-        AdaptiveRadixTree art = new AdaptiveRadixTree();
-        importART(art);
 
         LinkedBlockingDeque<RawUrl> deque = new LinkedBlockingDeque<>();
         ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
@@ -57,18 +35,26 @@ public class Gateway {
             downloaderThread.start();
         }
 
+        ArrayList<IndexStorageBarrel> barrels = new ArrayList<>();
         for(i=0; i<BARRELS_NUM; i++){
-            Thread barrelThread = new Thread(new IndexStorageBarrel.Builder()
-                                                        .multicastAddress(MULTICAST_ADDRESS)
-                                                        .port(PORT)
-                                                        .build());
+            IndexStorageBarrel barrel = new IndexStorageBarrel.Builder()
+                    .multicastAddress(MULTICAST_ADDRESS)
+                    .port(PORT)
+                    .build();
+
+            Thread barrelThread = new Thread(barrel);
             barrelThread.start();
+            barrels.add(barrel);
         }
 
-        while(true){
+        deque.add(new RawUrl("https://en.wikipedia.org/wiki/Main_Page"));
+
+        while(!deque.isEmpty()){
             System.out.println("DEQUEUE: " + deque.size());
             System.out.println("PARSED URLS: " + parsedUrlsMap.size());
             Thread.sleep(1*1000);
         }
+
+        // TODO wait/join all created threads when system is shutting down, or signal is caught
     }
 }

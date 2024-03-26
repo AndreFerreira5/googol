@@ -1,9 +1,15 @@
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.UUID;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 public class IndexStorageBarrel extends Thread{
     private AdaptiveRadixTree art;
@@ -12,6 +18,8 @@ public class IndexStorageBarrel extends Thread{
     private final int port;
     private final int multicastServerConnectMaxRetries = 5;
     private final int retryDelay = 5;
+    private final char DELIMITER = Gateway.DELIMITER;
+    private ExecutorService executorService;
 
 
     private int getMulticastMessageSize(MulticastSocket socket){
@@ -29,7 +37,8 @@ public class IndexStorageBarrel extends Thread{
 
 
     private String getMulticastMessage(MulticastSocket socket, int messageSize){
-        byte[] dataBuffer = new byte[messageSize];
+        //byte[] dataBuffer = new byte[messageSize];
+        byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
         try{
             socket.receive(packet);
@@ -73,21 +82,73 @@ public class IndexStorageBarrel extends Thread{
     }
 
 
+    public void exportART(){
+        exportART(this.art);
+    }
+
+
+    private static void exportART(AdaptiveRadixTree art){
+        try{
+            art.exportART();
+        } catch(FileNotFoundException e){
+            System.out.println("TREE FILE NOT FOUND! Stopping the exportation...");
+        } catch(IOException e) {
+            System.out.println("ERROR OPENING FILE: " + e + "\nStopping the exportation...");
+        }
+    }
+
+
+    private static void importART(AdaptiveRadixTree art){
+        try{
+            art.importART();
+        } catch(FileNotFoundException e){
+            System.out.println("TREE FILE NOT FOUND! Skipping the importation...");
+        } catch(IOException e) {
+            System.out.println("ERROR OPENING FILE: " + e + "\nSkipping the importation...");
+        }
+    }
+
+
     public void run(){
         log("UP!");
+
+        log("Importing ART...");
+        importART(art);
 
         MulticastSocket socket = setupMulticastConn();
         if(socket == null) return;
         log("Successfully joined multicast group!");
 
-        while(true){
-            /* Two-Step Reception */
-            int messageSize = getMulticastMessageSize(socket);
-            String message = getMulticastMessage(socket, messageSize);
-            log("Received message: " + message);
-            // TODO treat the data and send it to barrel, if succeded
+        try{
+            while(true){
+                String message = getMulticastMessage(socket, 0);
+
+                // spawn new runnable helper object to process the message received and submit it to thread pool
+                BarrelMessageHelper helper = new BarrelMessageHelper(message, art, DELIMITER);
+                executorService.submit(helper);
+            }
+        } catch (Exception e){
+            log("Error: " + e);
+        } finally {
+            shutdown();
+            exportART(art);
+        }
+
+    }
+
+
+    public void shutdown() {
+        log("Shutting down executor service...");
+        executorService.shutdown(); // initiates an orderly shutdown
+        try {
+            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                executorService.shutdownNow(); // cancel currently executing tasks
+            }
+        } catch (InterruptedException ie) {
+            executorService.shutdownNow();
         }
     }
+
 
     private void log(String text){
         System.out.println("[BARREL " + uuid.toString().substring(0, 8) + "] " + text);
@@ -97,6 +158,7 @@ public class IndexStorageBarrel extends Thread{
         this.art = new AdaptiveRadixTree();
         this.multicastAddress = multicastAddress;
         this.port = port;
+        this.executorService = Executors.newCachedThreadPool();
     }
 
     public static class Builder{
@@ -125,5 +187,33 @@ public class IndexStorageBarrel extends Thread{
 
     public ArrayList<Long> getLinkIndices(String word){
         return art.find(word);
+    }
+}
+
+
+class BarrelMessageHelper implements Runnable {
+    private String message;
+    private AdaptiveRadixTree art;
+    private final char DELIMITER;
+
+    public BarrelMessageHelper(String message, AdaptiveRadixTree art, char DELIMITER) {
+        this.message = message;
+        this.art = art;
+        this.DELIMITER = DELIMITER;
+    }
+
+    private ArrayList<String> parseMessage(String message){
+        String[] splitMessage = message.split(Pattern.quote(String.valueOf(DELIMITER)));
+        return new ArrayList<>(Arrays.asList(splitMessage));
+    }
+
+    @Override
+    public void run() {
+        ArrayList<String> parsedMessage = parseMessage(message);
+        long id = Long.parseLong(parsedMessage.get(0));
+        for(int i = 1; i < parsedMessage.size(); i++){
+            String word = parsedMessage.get(i);
+            art.insert(word, id);
+        }
     }
 }
