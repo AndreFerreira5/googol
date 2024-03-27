@@ -374,16 +374,42 @@ public class AdaptiveRadixTreeTest {
 
     @Test
     void testExportImportDiverseLargeTree() throws IOException {
-        int totalEntries = 1000; // Total number of entries to insert into the tree
-        Map<String, Long> generatedKeyIndexMap = new HashMap<>(); // To store generated unique keys with their corresponding link indices
+        int totalEntries = 10000; // Total number of entries to insert into the tree
+        int maxIndices = 500;
+        Map<String, List<Long>> generatedKeyIndexMap = new HashMap<>();
 
         while (generatedKeyIndexMap.size() < totalEntries) {
             // generate a random string that's unlikely to share a prefix with others
             String key = generateRandomString(10) + generatedKeyIndexMap.size();
-            //System.out.println(key);
-            long linkIndex = generatedKeyIndexMap.size();
-            art.insert(key, linkIndex);
-            generatedKeyIndexMap.put(key, linkIndex);
+            List<Long> linkIndices = new ArrayList<>();
+
+            int numberOfIndices = 1 + (int) (Math.random() * maxIndices);
+
+            for (int i = 0; i < numberOfIndices; i++) {
+                // For simplicity, just use size of map to ensure uniqueness
+                long linkIndex = generatedKeyIndexMap.size() * 10L + i;
+
+                // Optionally, share some link indices between words
+                if (!generatedKeyIndexMap.isEmpty() && i == 0) { // For example, share the first index with the previous word
+                    String previousKey = generateRandomString(10) + (generatedKeyIndexMap.size() - 1);
+                    if (generatedKeyIndexMap.containsKey(previousKey)) { // Ensure the previous key exists in the map
+                        linkIndices.add(generatedKeyIndexMap.get(previousKey).get(0));
+                    } else {
+                        // Previous key does not exist, handle accordingly, maybe log a warning or add a new index
+                        long newLinkIndex = generatedKeyIndexMap.size() * 10L + i;
+                        linkIndices.add(newLinkIndex);
+                        art.insert(key, newLinkIndex);
+                    }
+                } else {
+                    long newLinkIndex = generatedKeyIndexMap.size() * 10L + i;
+                    linkIndices.add(newLinkIndex);
+                    art.insert(key, newLinkIndex);
+                }
+
+                art.insert(key, linkIndex); // Insert each link index
+            }
+
+            generatedKeyIndexMap.put(key, linkIndices);
         }
 
         art.setFilename("diverseLargeTreeExport.bin");
@@ -393,13 +419,15 @@ public class AdaptiveRadixTreeTest {
         importedArt.setFilename("diverseLargeTreeExport.bin");
         importedArt.importART();
 
-        for (Map.Entry<String, Long> entry : generatedKeyIndexMap.entrySet()) {
+        for (Map.Entry<String, List<Long>> entry : generatedKeyIndexMap.entrySet()) {
             String key = entry.getKey();
-            Long expectedIndex = entry.getValue();
-            ArrayList<Long> linkIndices = importedArt.find(key);
-            assertNotNull(linkIndices, "Imported tree should contain the key: " + key);
-            ArrayList<Long> linkIndicesTemp = importedArt.find(key);
-            assertTrue(linkIndices.contains(expectedIndex), "Link indices for key " + key + " should contain the correct value " + expectedIndex);
+            List<Long> expectedIndices = entry.getValue();
+            ArrayList<Long> actualIndices = importedArt.find(key);
+
+            assertNotNull(actualIndices, "Imported tree should contain the key: " + key);
+            for (Long expectedIndex : expectedIndices) {
+                assertTrue(actualIndices.contains(expectedIndex), "Link indices for key " + key + " should contain the correct value " + expectedIndex);
+            }
         }
 
         deleteFile("diverseLargeTreeExport.bin");
@@ -456,4 +484,5 @@ public class AdaptiveRadixTreeTest {
             e.printStackTrace();
         }
     }
+
 }

@@ -312,7 +312,7 @@ public class Downloader  extends Thread{
                 // get raw url from deque and parse it
                 RawUrl rawUrl = deque.take();
                 ParsedUrl parsedUrl = parseRawUrl(rawUrl);
-                if(parsedUrl == null) {
+                if(parsedUrl == null || parsedUrl.id == null || parsedUrl.url == null) {
                     continue;
                 }
 
@@ -339,6 +339,7 @@ public class Downloader  extends Thread{
                 idToUrlKeyPairMap.put(id, urlIdPair);
                 // put parsed url on main hash map, associating it with the url id pair
                 parsedUrlsMap.put(urlIdPair, parsedUrl);
+
             } catch (InterruptedException e){
                 log("Interrupted! Exiting...");
                 interrupted = true;

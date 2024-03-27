@@ -109,11 +109,22 @@ public class IndexStorageBarrel extends Thread{
     }
 
 
+    private void importART(){
+        try{
+            this.art.importART();
+        } catch(FileNotFoundException e){
+            System.out.println("TREE FILE NOT FOUND! Skipping the importation...");
+        } catch(IOException e) {
+            System.out.println("ERROR OPENING FILE: " + e + "\nSkipping the importation...");
+        }
+    }
+
+
     public void run(){
         log("UP!");
 
         log("Importing ART...");
-        importART(art);
+        importART();
 
         MulticastSocket socket = setupMulticastConn();
         if(socket == null) return;
@@ -134,6 +145,16 @@ public class IndexStorageBarrel extends Thread{
             exportART(art);
         }
 
+    }
+
+
+    public ArrayList<Long> searchWord(String word){
+        return art.find(word);
+    }
+
+
+    public AdaptiveRadixTree getART(){
+        return this.art;
     }
 
 
@@ -181,7 +202,7 @@ public class IndexStorageBarrel extends Thread{
     }
 
 
-    public void insert(String word, int linkIndex){
+    public void insert(String word, long linkIndex){
         art.insert(word, linkIndex);
     }
 
