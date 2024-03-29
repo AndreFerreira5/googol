@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.engine.*;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -371,6 +372,99 @@ public class AdaptiveRadixTreeTest {
         Exception exception = assertThrows(IOException.class, art::importART);
     }
 
+    @Test
+    void testExportImportDiverseLargeTree() throws IOException {
+        int totalEntries = 10000; // Total number of entries to insert into the tree
+        int maxIndices = 500;
+        Map<String, List<Long>> generatedKeyIndexMap = new HashMap<>();
+
+        while (generatedKeyIndexMap.size() < totalEntries) {
+            // generate a random string that's unlikely to share a prefix with others
+            String key = generateRandomString(10) + generatedKeyIndexMap.size();
+            List<Long> linkIndices = new ArrayList<>();
+
+            int numberOfIndices = 1 + (int) (Math.random() * maxIndices);
+
+            for (int i = 0; i < numberOfIndices; i++) {
+                // For simplicity, just use size of map to ensure uniqueness
+                long linkIndex = generatedKeyIndexMap.size() * 10L + i;
+
+                // Optionally, share some link indices between words
+                if (!generatedKeyIndexMap.isEmpty() && i == 0) { // For example, share the first index with the previous word
+                    String previousKey = generateRandomString(10) + (generatedKeyIndexMap.size() - 1);
+                    if (generatedKeyIndexMap.containsKey(previousKey)) { // Ensure the previous key exists in the map
+                        linkIndices.add(generatedKeyIndexMap.get(previousKey).get(0));
+                    } else {
+                        // Previous key does not exist, handle accordingly, maybe log a warning or add a new index
+                        long newLinkIndex = generatedKeyIndexMap.size() * 10L + i;
+                        linkIndices.add(newLinkIndex);
+                        art.insert(key, newLinkIndex);
+                    }
+                } else {
+                    long newLinkIndex = generatedKeyIndexMap.size() * 10L + i;
+                    linkIndices.add(newLinkIndex);
+                    art.insert(key, newLinkIndex);
+                }
+
+                art.insert(key, linkIndex); // Insert each link index
+            }
+
+            generatedKeyIndexMap.put(key, linkIndices);
+        }
+
+        art.setFilename("diverseLargeTreeExport.bin");
+        art.exportART();
+
+        AdaptiveRadixTree importedArt = new AdaptiveRadixTree();
+        importedArt.setFilename("diverseLargeTreeExport.bin");
+        importedArt.importART();
+
+        for (Map.Entry<String, List<Long>> entry : generatedKeyIndexMap.entrySet()) {
+            String key = entry.getKey();
+            List<Long> expectedIndices = entry.getValue();
+            ArrayList<Long> actualIndices = importedArt.find(key);
+
+            assertNotNull(actualIndices, "Imported tree should contain the key: " + key);
+            for (Long expectedIndex : expectedIndices) {
+                assertTrue(actualIndices.contains(expectedIndex), "Link indices for key " + key + " should contain the correct value " + expectedIndex);
+            }
+        }
+
+        deleteFile("diverseLargeTreeExport.bin");
+    }
+
+    private String generateRandomString(int length) {
+        String alphaNumericString = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                + "0123456789"
+                + "abcdefghijklmnopqrstuvxyz";
+        StringBuilder sb = new StringBuilder(length);
+
+        for (int i = 0; i < length; i++) {
+            // Generate a random number between 0 to alphaNumericString variable length
+            int index = (int)(alphaNumericString.length() * Math.random());
+
+            // Append the character at the randomly generated index to the StringBuilder
+            sb.append(alphaNumericString.charAt(index));
+        }
+
+        return sb.toString();
+    }
+
+    private static String generateConsistentString(int length) {
+        String alphaNumericString = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                + "0123456789"
+                + "abcdefghijklmnopqrstuvxyz";
+        StringBuilder sb = new StringBuilder(length);
+
+        for (int i = 0; i < length; i++) {
+            // Use counter to get the next character in a cyclic manner from ALPHA_NUMERIC_STRING
+            char ch = alphaNumericString.charAt(i % alphaNumericString.length());
+            sb.append(ch);
+        }
+
+        return sb.toString();
+    }
+
 
     @AfterAll
     public static void cleanup(){
@@ -390,4 +484,5 @@ public class AdaptiveRadixTreeTest {
             e.printStackTrace();
         }
     }
+
 }

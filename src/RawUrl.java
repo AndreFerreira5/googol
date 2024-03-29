@@ -1,20 +1,22 @@
+import java.io.Serializable;
 import java.net.URL;
 import java.net.MalformedURLException;
 
-public class Url {
+public class RawUrl implements Serializable {
+    private static final long serialVersionUID = 1L;
     public String url;
     public int depth;
     private static final int MIN_DEPTH = 0;
-    private static final int MAX_DEPTH = Main.CRAWLING_MAX_DEPTH;
+    private static final int MAX_DEPTH = Gateway.CRAWLING_MAX_DEPTH;
 
-    public Url(String url, int depth){
+    public RawUrl(String url, int depth){
         validateUrl(url);
         validateDepth(depth);
         this.url = url;
         this.depth = depth;
     }
 
-    public Url(String url){
+    public RawUrl(String url){
         this(url, MIN_DEPTH);
     }
 
@@ -31,7 +33,7 @@ public class Url {
             throw new InvalidDepthException("Invalid Url depth: " + depth + ". Must be between " + MIN_DEPTH + " and " + MAX_DEPTH + ".");
     }
 
-    class InvalidDepthException extends RuntimeException {
+    static class InvalidDepthException extends RuntimeException implements Serializable{
         public InvalidDepthException(String message) {
             super(message);
         }
