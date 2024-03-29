@@ -11,7 +11,7 @@ import java.net.MulticastSocket;
 import java.util.concurrent.*;
 import java.util.regex.Pattern;
 
-public class IndexStorageBarrel implements BarrelsRemote{
+public class IndexStorageBarrel implements IndexStorageBarrelRemote{
     private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
     private static final String barrelRMIEndpoint = "//localhost/IndexStorageBarrel-" + uuid.toString();
