@@ -694,6 +694,11 @@ public class AdaptiveRadixTree {
     }
 
 
+    public void clear(){
+        this.root = new Node4();
+    }
+
+
     public void insert(String word, long linkIndex) {
         if(word == null) throw new NullPointerException("Word cannot be null.");
         if(linkIndex < 0) throw new IllegalArgumentException("Link index cannot be negative.");

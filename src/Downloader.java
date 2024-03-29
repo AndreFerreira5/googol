@@ -1,11 +1,10 @@
 import java.net.*;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
+import java.rmi.Naming;
 import java.util.function.BiConsumer;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingDeque;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
@@ -19,96 +18,26 @@ import java.net.MulticastSocket;
 import java.io.IOException;
 
 public class Downloader  extends Thread{
-    private final UUID uuid = UUID.randomUUID();
-    private final LinkedBlockingDeque<RawUrl> deque;
-    private ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap;
-    private ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap;
-    private ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap;
-    private final int crawlingMaxDepth;
-    private CrawlingStrategy crawlingStrategy;
-    private final int urlTimeout = 2000;
-    private final String multicastAddress;
-    private final int port;
-    private final int multicastServerConnectMaxRetries = 5;
-    private final int retryDelay = 5;
-    private final char DELIMITER = Gateway.DELIMITER;
+    private static final UUID uuid = UUID.randomUUID();
+    private static int crawlingMaxDepth;
+    private static final int urlTimeout = 2000;
+    private static String multicastAddress;
+    private static int port;
+    private static final int multicastServerConnectMaxRetries = 5;
+    private static final int retryDelay = 5;
+    private static char DELIMITER;
+    private static GatewayRemote gatewayRemote;
 
-    // constructor with all downloader parameters
-    private Downloader(LinkedBlockingDeque<RawUrl> deque, ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap, ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap, ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap, int crawlingMaxDepth, CrawlingStrategy crawlingStrategy, String multicastAddress, int port) {
-        this.deque = deque;
-        this.parsedUrlsMap = parsedUrlsMap;
-        this.urlToUrlKeyPairMap = urlToUrlKeyPairMap;
-        this.idToUrlKeyPairMap = idToUrlKeyPairMap;
-        this.crawlingMaxDepth = crawlingMaxDepth;
-        this.crawlingStrategy = crawlingStrategy;
-        this.multicastAddress = multicastAddress;
-        this.port = port;
+
+    private static void log(String text){
+        System.out.println("[DOWNLOADER " + uuid.toString().substring(0, 8) + "] " + text);
     }
 
-
-    public static class Builder {
-        private LinkedBlockingDeque<RawUrl> deque;
-        private ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap;
-        private ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap;
-        private ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap;
-        private int CRAWLING_MAX_DEPTH = 2; // default crawling max depth
-        private CrawlingStrategy crawlingStrategy = new BFSStartegy(); // default crawling strategy
-        private String multicastAddress = "224.3.2.1";
-        private int port = 4321;
-
-        public Builder deque(LinkedBlockingDeque<RawUrl> deque) {
-            this.deque = deque;
-            return this;
-        }
-
-        public Builder parsedUrlsMap(ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap) {
-            this.parsedUrlsMap = parsedUrlsMap;
-            return this;
-        }
-
-        public Builder urlToUrlKeyPairMap(ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap) {
-            this.urlToUrlKeyPairMap = urlToUrlKeyPairMap;
-            return this;
-        }
-
-        public Builder idToUrlKeyPairMap(ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap) {
-            this.idToUrlKeyPairMap = idToUrlKeyPairMap;
-            return this;
-        }
-
-        public Builder crawlingMaxDepth(int CRAWLING_MAX_DEPTH) {
-            this.CRAWLING_MAX_DEPTH = CRAWLING_MAX_DEPTH;
-            return this;
-        }
-
-        public Builder crawlingStrategy(CrawlingStrategy crawlingStrategy) {
-            this.crawlingStrategy = crawlingStrategy;
-            return this;
-        }
-
-        public Builder multicastAddress(String multicastAddress) {
-            this.multicastAddress = multicastAddress;
-            return this;
-        }
-
-        public Builder port(int port) {
-            this.port = port;
-            return this;
-        }
-
-        public Downloader build() {
-            return new Downloader(deque, parsedUrlsMap, urlToUrlKeyPairMap, idToUrlKeyPairMap, CRAWLING_MAX_DEPTH, crawlingStrategy, multicastAddress, port);
-        }
-    }
-
-    private void log(String text){
-        System.out.println("[DOWNLOADER THREAD " + uuid.toString().substring(0, 8) + "] " + text);
-    }
-
-    private ParsedUrl parseRawUrl(RawUrl url){
+    private static ArrayList<String> parseRawUrl(RawUrl url){
         String link = url.url;
         int depth = url.depth;
-        if(urlToUrlKeyPairMap.containsKey(link) || depth > crawlingMaxDepth) {
+        //if(urlToUrlKeyPairMap.containsKey(link) || depth > crawlingMaxDepth) {
+        if(depth > crawlingMaxDepth) { // if depth exceeds crawling max depth skip
             return null;
         }
 
@@ -122,14 +51,19 @@ public class Downloader  extends Thread{
                     .get();
             // get all urls inside of the url and put it in the queue
             Elements subUrls = doc.select("a[href]");
+            ArrayList<RawUrl> rawUrls = new ArrayList<>();
             for(Element subUrl : subUrls){
                 String href = subUrl.attr("abs:href");
                 // try to add url to deque depending on the crawling strategy
                 try{
-                    crawlingStrategy.addUrl(deque, new RawUrl(href, depth+1));
+                    RawUrl rawUrl = new RawUrl(href, depth+1);
+                    rawUrls.add(rawUrl);
+                    //crawlingStrategy.addUrl(deque, new RawUrl(href, depth+1));
                 } catch (Exception ignored){} // if url is invalid or depth exceeds the max, just ignore it and go to the next url
-
             }
+
+            // add urls to deque through rmi
+            gatewayRemote.addUrlsToDeque(rawUrls); // TODO catch RemoteException here
 
             // get page title, description, keywords and text
             String title = doc.title();
@@ -138,10 +72,17 @@ public class Downloader  extends Thread{
             String text = doc.body().text();
 
             // get number of parsed urls from global variable and increment it
-            long parsedUrlsNum = Gateway.PARSED_URLS.getAndIncrement();
+            //long parsedUrlsNum = gatewayRemote.getParsedUrls();
 
             // return new parsed url object
-            return new ParsedUrl(link, parsedUrlsNum, title, description, text);
+            //return new ParsedUrl(link, parsedUrlsNum, title, description, text);
+            if(link == null || title == null || description == null || text == null) return null;
+            ArrayList<String> parsedUrlInfo = new ArrayList<>();
+            parsedUrlInfo.add(link);
+            parsedUrlInfo.add(title);
+            parsedUrlInfo.add(description);
+            parsedUrlInfo.addAll(getUniqueWordsFromText(text));
+            return parsedUrlInfo;
         } catch (IOException e) { // TODO notify user that the url he requested is invalid
             // TODO trigger barrel sync
             return null;
@@ -151,7 +92,26 @@ public class Downloader  extends Thread{
     }
 
 
-    private ArrayList<String> indexWordsParsedUrl(ParsedUrl parsedUrl){
+    private static ArrayList<String> getUniqueWordsFromText(String text){
+        ArrayList<String> buffer = new ArrayList<>();
+
+        // hashset to keep track of unique words
+        HashSet<String> wordsSet = new HashSet<>();
+
+        // append all unique words to the buffer
+        for(String word : text.replaceAll("\\W+", " ").trim().split("\\s+")){
+            if (!wordsSet.contains(word)) {
+                buffer.add(word + DELIMITER);
+                wordsSet.add(word); // add the word to the hashset to track uniqueness
+            }
+        }
+
+        return buffer;
+    }
+
+
+    /*
+    private static ArrayList<String> indexWordsParsedUrl(ParsedUrl parsedUrl){
         Long id = parsedUrl.id;
         String text = parsedUrl.text;
 
@@ -175,10 +135,10 @@ public class Downloader  extends Thread{
         parsedUrl.cleanText();
 
         return buffer;
-    }
+    }*/
 
 
-    private MulticastSocket setupMulticastServer(){
+    private static MulticastSocket setupMulticastServer(){
         MulticastSocket socket = null;
         int attempts = 0;
         while(attempts < multicastServerConnectMaxRetries){
@@ -195,7 +155,7 @@ public class Downloader  extends Thread{
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     log("Interrupted during retry wait! Stopping...");
-                    interrupt();
+                    return null;
                 }
             }
         }
@@ -203,12 +163,12 @@ public class Downloader  extends Thread{
         // if the connection wasn't successful
         if(socket != null) socket.close();
         log("Error setting up multicast server after " + multicastServerConnectMaxRetries + " attempts! Exiting...");
-        interrupt();
         return null;
     }
 
 
-    private void transmitToBarrels(ArrayList<String> buffer, Long id, MulticastSocket socket) {
+    /*
+    private static void transmitToBarrels(ArrayList<String> buffer, Long id, MulticastSocket socket) {
         // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
         final int MAX_PACKET_SIZE = 65507;
 
@@ -258,48 +218,96 @@ public class Downloader  extends Thread{
             sendPacket.accept(dataBuffer, currentSize);
         }
 
+    }*/
 
 
-        /*byte[] dataBuffer = new byte[buffer.size()];
-        for (int i = 0; i < buffer.size(); i++) {
-            dataBuffer[i] = buffer.get(i).getBytes()[0];
-        }*/
+    private static void transmitToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
+        // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
+        final int MAX_PACKET_SIZE = 65507;
 
-        /*
-        // Calculate the total size needed for all strings in bytes
-        int totalSize = buffer.stream().mapToInt(String::length).sum();
-        ByteBuffer dataBuffer = ByteBuffer.allocate(totalSize);
+        String url = buffer.get(0);
+        String title = buffer.get(1);
+        String description = buffer.get(2);
 
-        // Add each string to the buffer
-        for (String s : buffer) {
-            dataBuffer.put(s.getBytes(StandardCharsets.UTF_8));
+        BiConsumer<ByteBuffer, Integer> sendPacket = (byteBuffer, size) -> {
+            try {
+                InetAddress group = InetAddress.getByName(multicastAddress);
+                DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                socket.send(packet);
+            } catch (IOException e) {
+                log("Error transmitting to barrels. Retrying in " + retryDelay + "s...");
+                try {
+                    Thread.sleep(retryDelay); // wait before retrying
+                    InetAddress group = InetAddress.getByName(multicastAddress);
+                    DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                    socket.send(packet);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log("Interrupted during retry wait! Interrupting...");
+                    //interrupt();
+                } catch (IOException ex) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+
+        ByteBuffer dataBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE);
+        int currentSize = 0;
+
+        byte[] urlBytes = (url + DELIMITER).getBytes(StandardCharsets.UTF_8);
+        byte[] titleBytes = (title + DELIMITER).getBytes(StandardCharsets.UTF_8);
+        byte[] descriptionBytes = (description + DELIMITER).getBytes(StandardCharsets.UTF_8);
+
+        dataBuffer.put(urlBytes);
+        dataBuffer.put(titleBytes);
+        dataBuffer.put(descriptionBytes);
+        currentSize = urlBytes.length + titleBytes.length + descriptionBytes.length;
+        // TODO improve this, when a a packet is larger than MAX_PACKET_SIZE and needs to be segmented, the title and description dont need to be transmitted again
+        for(int i=3; i<buffer.size(); i++){
+            byte[] messageBytes = buffer.get(i).getBytes(StandardCharsets.UTF_8);
+            if (currentSize + messageBytes.length > MAX_PACKET_SIZE) {
+                // Send current buffer and reset for next chunk
+                sendPacket.accept(dataBuffer, currentSize);
+                dataBuffer.clear();
+                dataBuffer.put(urlBytes);
+                dataBuffer.put(titleBytes);
+                dataBuffer.put(descriptionBytes);
+                currentSize = urlBytes.length + titleBytes.length + descriptionBytes.length;
+            }
+            dataBuffer.put(messageBytes);
+            currentSize += messageBytes.length;
         }
 
-        try{
-            InetAddress group = InetAddress.getByName(multicastAddress);
-            DatagramPacket packet = new DatagramPacket(dataBuffer.array(), dataBuffer.position(), group, port);
-            socket.send(packet);
-        } catch (IOException e){
-            log("Error transmitting to barrels. Retrying in "+ retryDelay +"s...");
-            try {
-                Thread.sleep(retryDelay); // wait before retrying
-                InetAddress group = InetAddress.getByName(multicastAddress);
-                DatagramPacket packet = new DatagramPacket(dataBuffer.array(), dataBuffer.position(), group, port);
-                socket.send(packet);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                log("Interrupted during retry wait! Interrupting...");
-                interrupt();
-            } catch (IOException ex) {
-                throw  new RuntimeException(e);
-            }
-        }*/
+        // Send any remaining data
+        if (currentSize > 0) {
+            sendPacket.accept(dataBuffer, currentSize);
+        }
 
     }
 
 
-    public void run(){
+    private static GatewayRemote connectToGatewayRMI(){
+        try {
+            GatewayRemote gateway = (GatewayRemote) Naming.lookup("//localhost/GatewayService");
+            DELIMITER = gateway.getDelimiter();
+            crawlingMaxDepth = gateway.getCrawlingMaxDepth();
+            multicastAddress = gateway.getMulticastAddress();
+            port = gateway.getPort();
+            return gateway;
+        } catch (Exception e) {
+            System.out.println("GatewayClient exception: " + e.getMessage());
+            return null;
+        }
+    }
+
+
+    public static void main(String[] args) {
         log("UP!");
+
+        // setup gateway RMI
+        gatewayRemote = connectToGatewayRMI();
+        if(gatewayRemote == null) System.exit(1);
+
 
         // setup multicast server
         MulticastSocket socket = setupMulticastServer();
@@ -310,25 +318,38 @@ public class Downloader  extends Thread{
         while(!interrupted){
             try{
                 // get raw url from deque and parse it
-                RawUrl rawUrl = deque.take();
-                ParsedUrl parsedUrl = parseRawUrl(rawUrl);
-                if(parsedUrl == null || parsedUrl.id == null || parsedUrl.url == null) {
+                RawUrl rawUrl;
+                System.out.println("getting url from deque");
+                try {
+                    rawUrl = gatewayRemote.getUrlFromDeque();
+                } catch (Exception e){
+                    log("Error getting url from deque: " + e.getMessage());
                     continue;
                 }
 
+                /*ParsedUrl parsedUrl = parseRawUrl(rawUrl);
+                if(parsedUrl == null || parsedUrl.id == null || parsedUrl.url == null) {
+                    continue;
+                }*/
+
+                ArrayList<String> parsedUrlInfo = parseRawUrl(rawUrl);
+                if(parsedUrlInfo == null) continue;
+
+
                 // index words from parsed url
-                ArrayList<String> buffer = indexWordsParsedUrl(parsedUrl);
+                //ArrayList<String> buffer = indexWordsParsedUrl(parsedUrl);
 
                 // transmit buffer through multicast
                 try{
-                    transmitToBarrels(buffer, parsedUrl.id, socket);
+                    //transmitToBarrels(buffer, parsedUrl.id, socket);
+                    transmitToBarrels(parsedUrlInfo, socket);
                 } catch (Exception e){
                     log("Error transmitting to barrels. Skipping...");
                     log(e.getMessage());
                     continue;
                 }
 
-
+                /*
                 String link = parsedUrl.url;
                 Long id = parsedUrl.id;
                 // create new url id pair
@@ -338,12 +359,8 @@ public class Downloader  extends Thread{
                 // associate created url id pair to id
                 idToUrlKeyPairMap.put(id, urlIdPair);
                 // put parsed url on main hash map, associating it with the url id pair
-                parsedUrlsMap.put(urlIdPair, parsedUrl);
+                parsedUrlsMap.put(urlIdPair, parsedUrl);*/
 
-            } catch (InterruptedException e){
-                log("Interrupted! Exiting...");
-                interrupted = true;
-                Thread.currentThread().interrupt();
             } catch ( Exception ignored){} // catches malformed url and invalid url depth exceptions
         }
     }
