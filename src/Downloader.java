@@ -2,6 +2,7 @@ import java.net.*;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.rmi.Naming;
+import java.rmi.RemoteException;
 import java.util.function.BiConsumer;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,7 +24,7 @@ public class Downloader  extends Thread{
     private static final int urlTimeout = 2000;
     private static String multicastAddress;
     private static int port;
-    private static final int multicastServerConnectMaxRetries = 5;
+    private static final int maxRetries = 5;
     private static final int retryDelay = 500; // 1/2 second
     private static char DELIMITER;
     private static GatewayRemote gatewayRemote;
@@ -48,6 +49,8 @@ public class Downloader  extends Thread{
                     .timeout(urlTimeout)
                     .ignoreHttpErrors(true)
                     .get();
+
+            // TODO also get relative urls
             // get all urls inside of the url and put it in the queue
             Elements subUrls = doc.select("a[href]");
             ArrayList<RawUrl> rawUrls = new ArrayList<>();
@@ -62,7 +65,15 @@ public class Downloader  extends Thread{
             }
 
             // add urls to deque through rmi
-            gatewayRemote.addRawUrlsToUrlsDeque(rawUrls); // TODO catch RemoteException here
+            boolean added = false;
+            for(int i=0; i<maxRetries; i++){
+                try {
+                    gatewayRemote.addRawUrlsToUrlsDeque(rawUrls);
+                    added = true;
+                    break;
+                } catch (RemoteException ignored){}
+            }
+            if(!added) log("Error adding urls to urls deque. Proceeding...");
 
             // get page title, description, keywords and text
             String title = doc.title();
@@ -107,7 +118,7 @@ public class Downloader  extends Thread{
     private static MulticastSocket setupMulticastServer(){
         MulticastSocket socket = null;
         int attempts = 0;
-        while(attempts < multicastServerConnectMaxRetries){
+        while(attempts < maxRetries){
             try{
                 socket = new MulticastSocket(port);
                 InetAddress group = InetAddress.getByName(multicastAddress);
@@ -130,7 +141,7 @@ public class Downloader  extends Thread{
 
         // if the connection wasn't successful
         if(socket != null) socket.close();
-        log("Error setting up multicast server after " + multicastServerConnectMaxRetries + " attempts! Exiting...");
+        log("Error setting up multicast server after " + maxRetries + " attempts! Exiting...");
         return null;
     }
 
