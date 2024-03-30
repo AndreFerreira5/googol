@@ -24,7 +24,7 @@ public class Downloader  extends Thread{
     private static String multicastAddress;
     private static int port;
     private static final int multicastServerConnectMaxRetries = 5;
-    private static final int retryDelay = 5;
+    private static final int retryDelay = 500; // 1/2 second
     private static char DELIMITER;
     private static GatewayRemote gatewayRemote;
 
@@ -63,7 +63,7 @@ public class Downloader  extends Thread{
             }
 
             // add urls to deque through rmi
-            gatewayRemote.addUrlsToDeque(rawUrls); // TODO catch RemoteException here
+            gatewayRemote.addRawUrlsToUrlsDeque(rawUrls); // TODO catch RemoteException here
 
             // get page title, description, keywords and text
             String title = doc.title();
@@ -148,6 +148,8 @@ public class Downloader  extends Thread{
                 socket.joinGroup(group);
                 return socket;
             } catch (IOException e){
+                System.out.println(multicastAddress);
+                System.out.println(e.getMessage());
                 log("Error setting up multicast server! Retrying in "+ retryDelay +"s...");
                 attempts++;
                 try {

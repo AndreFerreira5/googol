@@ -32,9 +32,11 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
         try{
+            log("getting multicast message");
             socket.receive(packet);
+            log("got multicast message");
         } catch (IOException e){
-            log("Error receiving multicast message size.");
+            log("Error receiving multicast message.");
             // TODO trigger sync between barrels
         }
 
@@ -167,6 +169,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
             } catch (RemoteException ignored){}
         }
         if(!unregistered) log("Error unregistering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
+
         System.exit(1);
     }
 
@@ -230,7 +233,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         log("Shutting down executor service...");
         executorService.shutdown(); // initiates an orderly shutdown
         try {
-            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
                 executorService.shutdownNow(); // cancel currently executing tasks
             }
         } catch (InterruptedException ie) {
@@ -239,7 +242,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
     }
 
 
-    private static void log(String text){
+    protected static void log(String text){
         System.out.println("[BARREL " + uuid.toString().substring(0, 8) + "] " + text);
     }
 
@@ -304,6 +307,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
 
         for(String word : words){
             ArrayList<Long> linkIndices = getLinkIndices(word);
+            if(linkIndices.isEmpty()) continue;
             for(long linkIndex : linkIndices){
                 ArrayList<String> result = new ArrayList<>();
                 ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
@@ -367,23 +371,6 @@ class BarrelMessageHelper implements Runnable {
     }
 
 
-    private ArrayList<String> getUniqueWordsFromText(String text){
-        ArrayList<String> buffer = new ArrayList<>();
-
-        // hashset to keep track of unique words
-        HashSet<String> wordsSet = new HashSet<>();
-
-        // append all unique words to the buffer
-        for(String word : text.replaceAll("\\W+", " ").trim().split("\\s+")){
-            if (!wordsSet.contains(word)) {
-                buffer.add(word + IndexStorageBarrel.DELIMITER);
-                wordsSet.add(word); // add the word to the hashset to track uniqueness
-            }
-        }
-
-        return buffer;
-    }
-
     // TODO maybe don't skip entirely already parsed urls and compare the text to see if there's any new one, and if so, insert it into the tree
     @Override
     public void run() {
@@ -391,6 +378,7 @@ class BarrelMessageHelper implements Runnable {
         //long id = Long.parseLong(parsedMessage.get(0));
         String url = parsedMessage.get(0);
         if(hasUrlBeenParsed(url)) { // if url has already been parsed, do nothing
+            IndexStorageBarrel.log(url + " - has already been parsed");
             ParsedUrlIdPair pair = IndexStorageBarrel.urlToUrlKeyPairMap.get(url);
             long id = IndexStorageBarrel.parsedUrlsMap.get(pair).id;
 
@@ -398,7 +386,9 @@ class BarrelMessageHelper implements Runnable {
                 String word = parsedMessage.get(i);
                 art.insert(word, id);
             }
+            IndexStorageBarrel.log(url + " - all inserted");
         } else {
+            IndexStorageBarrel.log(url + " - not parsed");
             /* try to increment and retrieve the number of parsed urls */
             long id = -1;
             for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
@@ -409,6 +399,7 @@ class BarrelMessageHelper implements Runnable {
                 }
             }
             if (id == -1) return;
+            IndexStorageBarrel.log(url + " - number of parsed urls incremented");
 
             // get title, description and text
             String title = parsedMessage.get(1);
@@ -432,6 +423,7 @@ class BarrelMessageHelper implements Runnable {
                 String word = parsedMessage.get(i);
                 art.insert(word, id);
             }
+            IndexStorageBarrel.log(url + " - parsed!!!");
         }
     }
 }
