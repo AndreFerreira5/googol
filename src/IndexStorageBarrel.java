@@ -197,6 +197,11 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         }
         log("Successfully registered barrel in Gateway! RMI Endpoint: " + barrelRMIEndpoint);
 
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutdown Hook is running!");
+            exit();
+        }));
+
         // setup multicast connection
         MulticastSocket socket = setupMulticastConn();
         if(socket == null) return;

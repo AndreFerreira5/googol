@@ -1114,6 +1114,7 @@ class ProgressTracker {
     private long fileSize = 0;
     private int processedNodes = 0;
     private int totalNodes = 0;
+    private final int barWidth = 30;
 
     public ProgressTracker(long fileSize) {
         this.fileSize = fileSize;
@@ -1135,8 +1136,16 @@ class ProgressTracker {
 
     private void updateProgress(int currentPercentage) {
         if (currentPercentage != lastPrintedPercentage) {
-            System.out.println("Progress: " + currentPercentage + "%");
+            int progress = (currentPercentage * barWidth) / 100;
+            //System.out.print("\rProgress: " + currentPercentage + "%");
+            String filledPart = "-".repeat(progress);
+            String pointer = (progress < barWidth) ? ">" : ""; // add > only if there is a space
+            String emptyPart = " ".repeat(Math.max(barWidth - progress - pointer.length(), 0));
+            String bar = "[" + filledPart + pointer + emptyPart + "] (" + currentPercentage + "%)";
+
+            System.out.print("\r" + bar);
             lastPrintedPercentage = currentPercentage;
+            if(lastPrintedPercentage == 100) System.out.println();
         }
     }
 }
