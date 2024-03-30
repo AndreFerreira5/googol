@@ -36,7 +36,6 @@ public class Downloader  extends Thread{
     private static ArrayList<String> parseRawUrl(RawUrl url){
         String link = url.url;
         int depth = url.depth;
-        //if(urlToUrlKeyPairMap.containsKey(link) || depth > crawlingMaxDepth) {
         if(depth > crawlingMaxDepth) { // if depth exceeds crawling max depth skip
             return null;
         }
@@ -71,11 +70,6 @@ public class Downloader  extends Thread{
             //String keywords = doc.select("meta[name=keywords]").attr("content");
             String text = doc.body().text();
 
-            // get number of parsed urls from global variable and increment it
-            //long parsedUrlsNum = gatewayRemote.getParsedUrls();
-
-            // return new parsed url object
-            //return new ParsedUrl(link, parsedUrlsNum, title, description, text);
             if(link == null || title == null || description == null || text == null) return null;
             ArrayList<String> parsedUrlInfo = new ArrayList<>();
             parsedUrlInfo.add(link);
@@ -110,34 +104,6 @@ public class Downloader  extends Thread{
     }
 
 
-    /*
-    private static ArrayList<String> indexWordsParsedUrl(ParsedUrl parsedUrl){
-        Long id = parsedUrl.id;
-        String text = parsedUrl.text;
-
-        ArrayList<String> buffer = new ArrayList<>();
-
-        // start the buffer with the url id
-        buffer.add(id.toString() + DELIMITER);
-
-        // hashset to keep track of unique words
-        HashSet<String> wordsSet = new HashSet<>();
-
-        // append all unique words to the buffer
-        for(String word : text.replaceAll("\\W+", " ").trim().split("\\s+")){
-            if (!wordsSet.contains(word)) {
-                buffer.add(word + DELIMITER);
-                wordsSet.add(word); // add the word to the hashset to track uniqueness
-            }
-        }
-
-        // remove text from object as it is not necessary anymore
-        parsedUrl.cleanText();
-
-        return buffer;
-    }*/
-
-
     private static MulticastSocket setupMulticastServer(){
         MulticastSocket socket = null;
         int attempts = 0;
@@ -167,60 +133,6 @@ public class Downloader  extends Thread{
         log("Error setting up multicast server after " + multicastServerConnectMaxRetries + " attempts! Exiting...");
         return null;
     }
-
-
-    /*
-    private static void transmitToBarrels(ArrayList<String> buffer, Long id, MulticastSocket socket) {
-        // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
-        final int MAX_PACKET_SIZE = 65507;
-
-        BiConsumer<ByteBuffer, Integer> sendPacket = (byteBuffer, size) -> {
-            try {
-                InetAddress group = InetAddress.getByName(multicastAddress);
-                DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
-                socket.send(packet);
-            } catch (IOException e) {
-                log("Error transmitting to barrels. Retrying in " + retryDelay + "s...");
-                try {
-                    Thread.sleep(retryDelay); // wait before retrying
-                    InetAddress group = InetAddress.getByName(multicastAddress);
-                    DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
-                    socket.send(packet);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    log("Interrupted during retry wait! Interrupting...");
-                    interrupt();
-                } catch (IOException ex) {
-                    throw new RuntimeException(e);
-                }
-            }
-        };
-
-        ByteBuffer dataBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE);
-        int currentSize = 0;
-
-        byte[] idBytes = (id.toString() + DELIMITER).getBytes(StandardCharsets.UTF_8);
-        //dataBuffer.put(idBytes);
-        //currentSize += idBytes.length;
-        for (String s : buffer) {
-            byte[] messageBytes = s.getBytes(StandardCharsets.UTF_8);
-            if (currentSize + messageBytes.length > MAX_PACKET_SIZE) {
-                // Send current buffer and reset for next chunk
-                sendPacket.accept(dataBuffer, currentSize);
-                dataBuffer.clear();
-                dataBuffer.put(idBytes);
-                currentSize = idBytes.length;
-            }
-            dataBuffer.put(messageBytes);
-            currentSize += messageBytes.length;
-        }
-
-        // Send any remaining data
-        if (currentSize > 0) {
-            sendPacket.accept(dataBuffer, currentSize);
-        }
-
-    }*/
 
 
     private static void transmitToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
@@ -321,7 +233,6 @@ public class Downloader  extends Thread{
             try{
                 // get raw url from deque and parse it
                 RawUrl rawUrl;
-                System.out.println("getting url from deque");
                 try {
                     rawUrl = gatewayRemote.getUrlFromDeque();
                 } catch (Exception e){
@@ -329,17 +240,8 @@ public class Downloader  extends Thread{
                     continue;
                 }
 
-                /*ParsedUrl parsedUrl = parseRawUrl(rawUrl);
-                if(parsedUrl == null || parsedUrl.id == null || parsedUrl.url == null) {
-                    continue;
-                }*/
-
                 ArrayList<String> parsedUrlInfo = parseRawUrl(rawUrl);
                 if(parsedUrlInfo == null) continue;
-
-
-                // index words from parsed url
-                //ArrayList<String> buffer = indexWordsParsedUrl(parsedUrl);
 
                 // transmit buffer through multicast
                 try{
@@ -350,18 +252,6 @@ public class Downloader  extends Thread{
                     log(e.getMessage());
                     continue;
                 }
-
-                /*
-                String link = parsedUrl.url;
-                Long id = parsedUrl.id;
-                // create new url id pair
-                ParsedUrlIdPair urlIdPair = new ParsedUrlIdPair(link, id);
-                // associate created url id pair to link
-                urlToUrlKeyPairMap.put(link, urlIdPair);
-                // associate created url id pair to id
-                idToUrlKeyPairMap.put(id, urlIdPair);
-                // put parsed url on main hash map, associating it with the url id pair
-                parsedUrlsMap.put(urlIdPair, parsedUrl);*/
 
             } catch ( Exception ignored){} // catches malformed url and invalid url depth exceptions
         }

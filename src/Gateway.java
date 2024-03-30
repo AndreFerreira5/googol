@@ -162,15 +162,5 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
     public static void main(String[] args) throws InterruptedException {
         if(!setupGatewayRMI()) System.exit(1);
-
-        while(true){
-            Collection<String> collection = barrelsOnline.values();
-            System.out.println("ONLINE BARRELS");
-            for(String barrelEndpoint: collection){
-                System.out.println(barrelEndpoint);
-            }
-            System.out.println();
-            Thread.sleep(1000);
-        }
     }
 }

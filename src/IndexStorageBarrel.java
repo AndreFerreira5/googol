@@ -164,10 +164,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static boolean setupRMI() {
         try {
             IndexStorageBarrel barrel = new IndexStorageBarrel();
-            // Attempt to connect to the existing registry
-            //Registry registry = LocateRegistry.getRegistry(rmiPort);
-            // Register the service with a unique name
-            System.out.println("registry got");
             Naming.rebind(barrelRMIEndpoint, barrel);
             System.out.println("Barrel Service bound in registry with endpoint: " + barrelRMIEndpoint);
             return true;
@@ -270,34 +266,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     protected static void log(String text){
         System.out.println("[BARREL " + uuid.toString().substring(0, 8) + "] " + text);
     }
-
-    /*
-    public IndexStorageBarrel(String multicastAddress, int port) throws RemoteException {
-        art = new AdaptiveRadixTree();
-        this.multicastAddress = multicastAddress;
-        this.port = port;
-        executorService = Executors.newCachedThreadPool();
-    }
-
-    public static class Builder{
-        private String multicastAddress = "224.3.2.1";
-        private int port = 4321;
-
-        public Builder multicastAddress(String multicastAddress){
-            this.multicastAddress = multicastAddress;
-            return this;
-        }
-
-        public Builder port(int port){
-            this.port = port;
-            return this;
-        }
-
-        public IndexStorageBarrel build(){
-            return new IndexStorageBarrel(multicastAddress, port);
-        }
-    }*/
-
 
     public void insert(String word, long linkIndex){
         art.insert(word, linkIndex);
@@ -415,7 +383,6 @@ class BarrelMessageHelper implements Runnable {
         //long id = Long.parseLong(parsedMessage.get(0));
         String url = parsedMessage.get(0);
         if(hasUrlBeenParsed(url)) { // if url has already been parsed, do nothing
-            IndexStorageBarrel.log(url + " - has already been parsed");
             ParsedUrlIdPair pair = IndexStorageBarrel.urlToUrlKeyPairMap.get(url);
             long id = IndexStorageBarrel.parsedUrlsMap.get(pair).id;
 
@@ -423,9 +390,7 @@ class BarrelMessageHelper implements Runnable {
                 String word = parsedMessage.get(i);
                 art.insert(word, id);
             }
-            IndexStorageBarrel.log(url + " - all inserted");
         } else {
-            IndexStorageBarrel.log(url + " - not parsed");
             /* try to increment and retrieve the number of parsed urls */
             long id = -1;
             for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
@@ -436,7 +401,6 @@ class BarrelMessageHelper implements Runnable {
                 }
             }
             if (id == -1) return;
-            IndexStorageBarrel.log(url + " - number of parsed urls incremented");
 
             // get title, description and text
             String title = parsedMessage.get(1);
@@ -460,7 +424,6 @@ class BarrelMessageHelper implements Runnable {
                 String word = parsedMessage.get(i);
                 art.insert(word, id);
             }
-            IndexStorageBarrel.log(url + " - parsed!!!");
         }
     }
 }
