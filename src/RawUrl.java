@@ -7,7 +7,7 @@ public class RawUrl implements Serializable {
     public String url;
     public int depth;
     private static final int MIN_DEPTH = 0;
-    private static final int MAX_DEPTH = Gateway.CRAWLING_MAX_DEPTH;
+    private static final int MAX_DEPTH = Gateway.CRAWLING_MAX_DEPTH; // TODO maybe change this?
 
     public RawUrl(String url, int depth){
         validateUrl(url);

@@ -28,14 +28,26 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
     @Override
-    public void addUrlToDeque(RawUrl rawUrl) throws RemoteException{
+    public void addUrlToUrlsDeque(RawUrl rawUrl) throws RemoteException{
         crawlingStrategy.addUrl(urlsDeque, rawUrl);
     }
 
     @Override
-    public void addUrlsToDeque(ArrayList<RawUrl> rawUrls) throws RemoteException{
+    public void addUrlToUrlsDeque(String url) throws RemoteException{
+        crawlingStrategy.addUrl(urlsDeque, new RawUrl(url));
+    }
+
+    @Override
+    public void addRawUrlsToUrlsDeque(ArrayList<RawUrl> rawUrls) throws RemoteException{
         for(RawUrl rawUrl: rawUrls){
             crawlingStrategy.addUrl(urlsDeque, rawUrl);
+        }
+    }
+    
+    @Override
+    public void addUrlsToUrlsDeque(ArrayList<String> rawUrls) throws RemoteException{
+        for(String rawUrl: rawUrls){
+            crawlingStrategy.addUrl(urlsDeque, new RawUrl(rawUrl));
         }
     }
 

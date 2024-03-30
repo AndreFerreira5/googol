@@ -10,8 +10,10 @@ public interface GatewayRemote extends Remote{
 
     int getPort() throws RemoteException;
     RawUrl getUrlFromDeque() throws InterruptedException, RemoteException;
-    void addUrlToDeque(RawUrl rawUrl) throws RemoteException;
-    void addUrlsToDeque(ArrayList<RawUrl> rawUrls) throws RemoteException;
+    void addUrlToUrlsDeque(RawUrl rawUrl) throws RemoteException;
+    void addUrlToUrlsDeque(String url) throws RemoteException;
+    void addRawUrlsToUrlsDeque(ArrayList<RawUrl> rawUrls) throws RemoteException;
+    void addUrlsToUrlsDeque(ArrayList<String> rawUrls) throws RemoteException;
     void incrementParsedUrls() throws RemoteException;
     long getParsedUrls() throws RemoteException;
     long incrementAndGetParsedUrls() throws RemoteException;
