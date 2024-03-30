@@ -14,6 +14,16 @@ javac -d build -cp "lib/*" src/*.java
 ```
 
 ## Usage
+
+**Using run script**
+
+Config the script to your own liking, by default it spawns only one instance of the gateway, downloader, barrel and client.
+```shell
+./run.sh
+```
+**Manually**
+
+*For each class:*
 ```sh
 java -cp "build:lib/*" class.java
 ```
