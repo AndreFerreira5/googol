@@ -68,7 +68,7 @@ public class Downloader  extends Thread{
             String title = doc.title();
             String description = doc.select("meta[name=description]").attr("content");
             //String keywords = doc.select("meta[name=keywords]").attr("content");
-            String text = doc.body().text();
+            String text = doc.body().text().replaceAll(String.valueOf(DELIMITER), "");
 
             if(link == null || title == null || description == null || text == null) return null;
             ArrayList<String> parsedUrlInfo = new ArrayList<>();
