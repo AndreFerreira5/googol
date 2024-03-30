@@ -102,8 +102,49 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public ArrayList<String> getRegisteredBarrels() throws RemoteException {
         return new ArrayList<>(barrelsOnline.values());
     }
+
+    @Override
+    public int getRegisteredBarrelsCount() throws RemoteException{
+        return barrelsOnline.size();
+    }
     //TODO make more functions so the barrels send their load info to the gateway so it can choose dynamically which one to get info from
 
+    private String getRandomBarrel(){
+        if(barrelsOnline.isEmpty()) return null;
+        Collection<String> collection = barrelsOnline.values();
+        int random = (int) (Math.random() * collection.size());
+        return collection.toArray()[random].toString();
+    }
+
+    @Override
+    public ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException{
+        String randomBarrel = getRandomBarrel();
+        if (randomBarrel == null) return null;
+
+        IndexStorageBarrelRemote barrel;
+        try {
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+            return null;
+        }
+        return barrel.searchWord(word);
+    }
+
+    @Override
+    public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException{
+        String randomBarrel = getRandomBarrel();
+        if (randomBarrel == null) return null;
+
+        IndexStorageBarrelRemote barrel;
+        try {
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+            return null;
+        }
+        return barrel.searchWords(words);
+    }
 
     private static boolean setupGatewayRMI(){
         try {

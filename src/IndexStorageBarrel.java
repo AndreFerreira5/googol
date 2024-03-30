@@ -1,22 +1,23 @@
 import java.io.*;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.UUID;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
+import java.util.*;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.util.concurrent.*;
 import java.util.regex.Pattern;
 
-public class IndexStorageBarrel implements IndexStorageBarrelRemote{
+public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
     private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
     private static final String barrelRMIEndpoint = "//localhost/IndexStorageBarrel-" + uuid.toString();
     private static String multicastAddress;
     private static int port;
+    private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
     private static final int retryDelay = 5;
     protected static char DELIMITER;
@@ -25,6 +26,8 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
     protected static ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap = new ConcurrentHashMap<>();
+
+    protected IndexStorageBarrel() throws RemoteException {}
 
 
     private static String getMulticastMessage(MulticastSocket socket){
@@ -158,6 +161,24 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
     }
 
 
+    private static boolean setupRMI() {
+        try {
+            IndexStorageBarrel barrel = new IndexStorageBarrel();
+            // Attempt to connect to the existing registry
+            //Registry registry = LocateRegistry.getRegistry(rmiPort);
+            // Register the service with a unique name
+            System.out.println("registry got");
+            Naming.rebind(barrelRMIEndpoint, barrel);
+            System.out.println("Barrel Service bound in registry with endpoint: " + barrelRMIEndpoint);
+            return true;
+        } catch (Exception e) {
+            System.out.println("Barrel Service error: " + e.getMessage());
+            return false;
+        }
+    }
+
+
+
     private static void exit(){
         // unregister barrel in gateway
         boolean unregistered = false;
@@ -190,6 +211,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
             try {
                 gatewayRemote.registerBarrel(barrelRMIEndpoint);
+                rmiPort = gatewayRemote.getPort();
                 registered = true;
                 break;
             } catch (RemoteException ignored){}
@@ -199,6 +221,9 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
             System.exit(1);
         }
         log("Successfully registered barrel in Gateway! RMI Endpoint: " + barrelRMIEndpoint);
+
+        // setup barrel RMI
+        if(!setupRMI()){System.exit(1);}
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutdown Hook is running!");
@@ -246,7 +271,8 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         System.out.println("[BARREL " + uuid.toString().substring(0, 8) + "] " + text);
     }
 
-    public IndexStorageBarrel(String multicastAddress, int port){
+    /*
+    public IndexStorageBarrel(String multicastAddress, int port) throws RemoteException {
         art = new AdaptiveRadixTree();
         this.multicastAddress = multicastAddress;
         this.port = port;
@@ -270,7 +296,7 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
         public IndexStorageBarrel build(){
             return new IndexStorageBarrel(multicastAddress, port);
         }
-    }
+    }*/
 
 
     public void insert(String word, long linkIndex){
@@ -284,9 +310,12 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
     // TODO return the results based on the popularity instead of just all (also, group them by 10)
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word){
+        long start = System.nanoTime();
+
         ArrayList<ArrayList<String>> results = new ArrayList<>();
 
         ArrayList<Long> linkIndices = getLinkIndices(word);
+        if(linkIndices == null || linkIndices.isEmpty()) return null;
         for(long linkIndex : linkIndices){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
@@ -298,16 +327,21 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
             results.add(result);
         }
 
+        long end = System.nanoTime();
+        double elapsedTime = (end - start)/1_000_000.0;
+        results.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
         return results;
     }
 
     @Override
     public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words){
+        long start = System.nanoTime();
+
         ArrayList<ArrayList<String>> results = new ArrayList<>();
 
         for(String word : words){
             ArrayList<Long> linkIndices = getLinkIndices(word);
-            if(linkIndices.isEmpty()) continue;
+            if(linkIndices == null || linkIndices.isEmpty()) continue;
             for(long linkIndex : linkIndices){
                 ArrayList<String> result = new ArrayList<>();
                 ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
@@ -320,6 +354,9 @@ public class IndexStorageBarrel implements IndexStorageBarrelRemote{
             }
         }
 
+        long end = System.nanoTime();
+        double elapsedTime = (end - start)/1_000_000.0;
+        results.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
         return results;
     }
 

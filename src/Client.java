@@ -52,16 +52,14 @@ public class Client {
                 switch(splitInput[0]){
                     case "index":
                         if(splitInput.length > 2){ // when indexing more than 1 url
-                            ArrayList<String> urls = new ArrayList<>();
-                            for(int i=1; i<splitInput.length; i++){
-                                urls.add(splitInput[i]);
-                            }
+                            ArrayList<String> urls = new ArrayList<>(Arrays.asList(splitInput).subList(1, splitInput.length));
 
                             boolean added = false;
                             for(int i=0; i<maxRetries; i++){
                                 try {
                                     gatewayRemote.addUrlsToUrlsDeque(urls);
                                     added = true;
+                                    break;
                                 } catch (RemoteException ignored){}
                             }
                             if(!added) System.out.println("Error adding urls to deque!");
@@ -72,6 +70,7 @@ public class Client {
                                 try {
                                     gatewayRemote.addUrlToUrlsDeque(splitInput[1]);
                                     added = true;
+                                    break;
                                 } catch (RemoteException ignored){}
                             }
                             if(!added) System.out.println("Error adding url to deque!");
@@ -81,7 +80,43 @@ public class Client {
 
                         break;
                     case "search":
+                        ArrayList<ArrayList<String>> response = null;
+                        if(splitInput.length > 2){ // when searching more than one word
+                            ArrayList<String> words = new ArrayList<>(Arrays.asList(splitInput).subList(1, splitInput.length));
 
+                            boolean added = false;
+                            for(int i=0; i<maxRetries; i++){
+                                try {
+                                    response = gatewayRemote.searchWords(words);
+                                    added = true;
+                                    break;
+                                } catch (RemoteException ignored){}
+                            }
+                            if(!added) System.out.println("Error searching!");
+                        } else if (splitInput.length == 2){ // when searching only one word
+                            boolean added = false;
+                            for(int i=0; i<maxRetries; i++){
+                                try {
+                                    response = gatewayRemote.searchWord(splitInput[1]);
+                                    added = true;
+                                    break;
+                                } catch (RemoteException ignored){
+                                }
+                            }
+                            if(!added) System.out.println("Error searching!");
+
+                        } else { // when no word is provided
+                            System.out.println("Missing word(s) to search");
+                            break;
+                        }
+
+                        if(response == null) System.out.println("No results found");
+                        // TODO maybe group the results by 10 here
+                        else{
+                            for (ArrayList<String> strings : response) {
+                                System.out.println(strings);
+                            }
+                        }
                         break;
                     case "exit":
                         System.out.println("Exiting client...");
