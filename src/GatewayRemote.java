@@ -20,4 +20,7 @@ public interface GatewayRemote extends Remote{
     void registerBarrel(String barrelEndpoint) throws RemoteException;
     void unregisterBarrel(String barrelEndpoint) throws RemoteException;
     ArrayList<String> getRegisteredBarrels() throws RemoteException;
+    int getRegisteredBarrelsCount() throws RemoteException;
+    ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException;
+    ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException;
 }
