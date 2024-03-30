@@ -50,8 +50,7 @@ public class Downloader  extends Thread{
                     .ignoreHttpErrors(true)
                     .get();
 
-            // TODO also get relative urls
-            // get all urls inside of the url and put it in the queue
+            // get all urls inside the url and put it in the queue
             Elements subUrls = doc.select("a[href]");
             ArrayList<RawUrl> rawUrls = new ArrayList<>();
             for(Element subUrl : subUrls){
