@@ -8,11 +8,13 @@ public class Client {
     private static final int maxRetries = 5;
     private static final String[] AVAILABLE_COMMANDS = {"index",
                                                         "search",
-                                                        "exit"
+                                                        "exit",
+                                                        "status"
                                                         };
     private static final String[] COMMANDS_DESCRIPTION = {"Index a provided Url (i.e \"index https://example.com\")",
                                                             "Search Urls by word(s) (i.e \"search word1 word2\")",
-                                                            "Close client"
+                                                            "Close client",
+                                                            "Get system status"
                                                             };
     private static GatewayRemote connectToGatewayRMI(){
         try {
@@ -118,9 +120,28 @@ public class Client {
                             }
                         }
                         break;
+                    case "status":
+                        ArrayList<String> status = null;
+                        boolean success = false;
+                        for(int i=0; i<maxRetries; i++){
+                            try {
+                                status = gatewayRemote.getSystemInfo();
+                                success = true;
+                                break;
+                            } catch (RemoteException ignored){}
+                        }
+                        if(!success) System.out.println("Error getting system status!");
+                        else{
+                            System.out.println("-----SYSTEM STATUS-----");
+                            for(String info : status){
+                                System.out.println(info);
+                            }
+                        }
+                        break;
                     case "exit":
                         System.out.println("Exiting client...");
                         System.exit(0);
+                        break;
                 }
             } else {
                 System.out.println("Invalid command: " + splitInput[0]);

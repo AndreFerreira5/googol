@@ -18,6 +18,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
     public static final int PORT = 4322;
     public static final char DELIMITER = '|';
+    private static double averageLatency = 0;
+    private static double totalRequests = 0;
     private static LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
     private static ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
 
@@ -115,6 +117,33 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         Collection<String> collection = barrelsOnline.values();
         int random = (int) (Math.random() * collection.size());
         return collection.toArray()[random].toString();
+    }
+
+
+    private void updateAverageLatency(double latency) {
+        averageLatency = (averageLatency + latency) / ++totalRequests;
+    }
+
+    private double getAverageLatency() {
+        return averageLatency;
+    }
+
+    @Override
+    public ArrayList<String> getSystemInfo(){
+        ArrayList<String> systemInfo = new ArrayList<>();
+        systemInfo.add("Average latency: " + getAverageLatency()); // average latency
+        try{
+            ArrayList<String> barrels = getRegisteredBarrels();
+            StringBuilder barrelsString = new StringBuilder();
+            barrelsString.append("Registered barrels: \n");
+            for(String barrel: barrels){
+                barrelsString.append(barrel).append("\n");
+            }
+            systemInfo.add(String.valueOf(barrelsString)); // registered barrels
+        } catch (RemoteException ignored) {}
+
+        // TODO also return top 10 visited urls
+        return systemInfo;
     }
 
     @Override
