@@ -4,6 +4,7 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
@@ -128,7 +129,13 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             System.out.println("Error looking up barrel: " + e.getMessage());
             return null;
         }
-        return barrel.searchWord(word);
+
+        long start = System.nanoTime();
+        ArrayList<ArrayList<String>> response = barrel.searchWord(word);
+        long end = System.nanoTime();
+        double elapsedTime = (end - start)/1_000_000.0;
+        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        return response;
     }
 
     @Override
@@ -143,8 +150,37 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             System.out.println("Error looking up barrel: " + e.getMessage());
             return null;
         }
-        return barrel.searchWords(words);
+
+        long start = System.nanoTime();
+        ArrayList<ArrayList<String>> response = barrel.searchWords(words);
+        long end = System.nanoTime();
+        double elapsedTime = (end - start)/1_000_000.0;
+        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        return response;
     }
+
+
+    @Override
+    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException{
+        String randomBarrel = getRandomBarrel();
+        if (randomBarrel == null) return null;
+
+        IndexStorageBarrelRemote barrel;
+        try {
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+            return null;
+        }
+
+        long start = System.nanoTime();
+        ArrayList<ArrayList<String>> response = barrel.searchWordSet(words);
+        long end = System.nanoTime();
+        double elapsedTime = (end - start)/1_000_000.0;
+        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        return response;
+    }
+
 
     private static boolean setupGatewayRMI(){
         try {
