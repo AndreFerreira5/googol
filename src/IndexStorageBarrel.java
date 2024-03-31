@@ -328,6 +328,46 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         return results;
     }
 
+
+    @Override
+    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words){
+        if(words == null) return null;
+
+        ArrayList<ArrayList<String>> results = new ArrayList<>();
+        ArrayList<ArrayList<Long>> linkIndices = new ArrayList<>();
+        for(String word : words){
+            ArrayList<Long> indices = getLinkIndices(word);
+            if(indices.isEmpty()) continue;
+
+            linkIndices.add(indices);
+        }
+
+        Set<Long> commonElements = new HashSet<>(linkIndices.get(0));
+
+        for(int i=1; i<linkIndices.size(); i++){
+            Set<Long> currentSet = new HashSet<>(linkIndices.get(i));
+            commonElements.retainAll(currentSet);
+
+            if(commonElements.isEmpty()){
+                return null;
+            }
+        }
+
+        for(long linkIndex : commonElements){
+            ArrayList<String> result = new ArrayList<>();
+            ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
+            ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+            result.add(parsedUrl.url);
+            result.add(parsedUrl.title);
+            result.add(parsedUrl.description);
+
+            results.add(result);
+        }
+
+        return results;
+    }
+
+
     public static void serializeMap(Object object, String filename) {
         try (FileOutputStream fileOut = new FileOutputStream(filename);
              ObjectOutputStream out = new ObjectOutputStream(fileOut)) {
