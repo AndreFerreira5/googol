@@ -6,12 +6,14 @@ import java.util.Scanner;
 
 public class Client {
     private static final int maxRetries = 5;
-    private static final String[] AVAILABLE_COMMANDS = {"index",
+    private static final String[] AVAILABLE_COMMANDS = {"help",
+                                                        "index",
                                                         "search",
                                                         "exit",
                                                         "status"
                                                         };
-    private static final String[] COMMANDS_DESCRIPTION = {"Index a provided Url (i.e \"index https://example.com\")",
+    private static final String[] COMMANDS_DESCRIPTION = {  "Display available commands",
+                                                            "Index a provided Url (i.e \"index https://example.com\")",
                                                             "Search Urls by word(s) (i.e \"search word1 word2\")",
                                                             "Close client",
                                                             "Get system status"
@@ -52,6 +54,9 @@ public class Client {
 
             if (splitInput.length > 0 && Arrays.asList(AVAILABLE_COMMANDS).contains(splitInput[0])) {
                 switch(splitInput[0]){
+                    case "help":
+                        printAvailableCommands();
+                        break;
                     case "index":
                         if(splitInput.length > 2){ // when indexing more than 1 url
                             ArrayList<String> urls = new ArrayList<>(Arrays.asList(splitInput).subList(1, splitInput.length));
@@ -113,7 +118,6 @@ public class Client {
                         }
 
                         if(response == null) System.out.println("No results found");
-                        // TODO maybe group the results by 10 here
                         else{
                             int page = 0;
                             final int pageSize = 10;
