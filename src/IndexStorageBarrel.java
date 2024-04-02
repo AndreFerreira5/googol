@@ -1,8 +1,6 @@
 import java.io.*;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 import java.net.DatagramPacket;
@@ -10,19 +8,22 @@ import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.util.concurrent.*;
 import java.util.regex.Pattern;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
     private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
     private static final String barrelRMIEndpoint = "//localhost/IndexStorageBarrel-" + uuid.toString();
     private static String multicastAddress;
+    private static final int HELPER_THREADS_NUM = 16;
     private static int port;
     private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
     private static final int retryDelay = 5;
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
-    private static ExecutorService executorService = Executors.newCachedThreadPool();
+    private static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
+    protected static BlockingQueue<String> multicastMessagesQueue = new LinkedBlockingQueue<>();
     protected static ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap = new ConcurrentHashMap<>();
@@ -227,18 +228,19 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         if(socket == null) return;
         log("Successfully joined multicast group!");
 
+        for(int i=0; i<HELPER_THREADS_NUM; i++){
+            fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
+        }
+
         try{
             while(true){
                 String message = getMulticastMessage(socket);
-
-                // spawn new runnable helper object to process the message received and submit it to thread pool
-                BarrelMessageHelper helper = new BarrelMessageHelper(message, art, DELIMITER);
-                executorService.submit(helper);
+                multicastMessagesQueue.add(message);
             }
         } catch (Exception e){
-            log("Error: " + e);
+            log("Error receiving message: " + e);
         } finally {
-            shutdown();
+            fixedThreadPool.shutdown();
             exportART(art);
             exit();
         }
@@ -246,15 +248,74 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    public static void shutdown() {
-        log("Shutting down executor service...");
-        executorService.shutdown(); // initiates an orderly shutdown
-        try {
-            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                executorService.shutdownNow(); // cancel currently executing tasks
+    private static ArrayList<String> parseMessage(String message){
+        String[] splitMessage = message.split(Pattern.quote(String.valueOf(DELIMITER)));
+        return new ArrayList<>(Arrays.asList(splitMessage));
+    }
+
+    private static boolean hasUrlBeenParsed(String url){
+        return IndexStorageBarrel.urlToUrlKeyPairMap.containsKey(url);
+    }
+
+
+    private static void messagesParser() {
+        while(true) {
+            String message = null;
+            try {
+                message = multicastMessagesQueue.take();
+            } catch (InterruptedException e){
+                Thread.currentThread().interrupt();
+                continue;
             }
-        } catch (InterruptedException ie) {
-            executorService.shutdownNow();
+            if(message == null) continue;
+
+            ArrayList<String> parsedMessage = parseMessage(message);
+            //long id = Long.parseLong(parsedMessage.get(0));
+            String url = parsedMessage.get(0);
+            if (hasUrlBeenParsed(url)) { // if url has already been parsed, do nothing
+                ParsedUrlIdPair pair = IndexStorageBarrel.urlToUrlKeyPairMap.get(url);
+                long id = IndexStorageBarrel.parsedUrlsMap.get(pair).id;
+
+                for (int i = 3; i < parsedMessage.size(); i++) {
+                    String word = parsedMessage.get(i);
+                    art.insert(word, id);
+                }
+                System.out.println("Parsed and updated existing url: " + url);
+            } else {
+                /* try to increment and retrieve the number of parsed urls */
+                long id = -1;
+                for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+                    try {
+                        id = IndexStorageBarrel.gatewayRemote.incrementAndGetParsedUrls();
+                        break;
+                    } catch (RemoteException ignored) {
+                    }
+                }
+                if (id == -1) return;
+
+                // get title, description and text
+                String title = parsedMessage.get(1);
+                String description = parsedMessage.get(2);
+                //String text = parsedMessage.get(3);
+
+                ParsedUrl parsedUrl = new ParsedUrl(url, id, title, description, null); // TODO maybe remove the 'text' variable from the parsed url object
+
+                // create new url id pair
+                ParsedUrlIdPair urlIdPair = new ParsedUrlIdPair(url, id);
+                // associate created url id pair to link
+                IndexStorageBarrel.urlToUrlKeyPairMap.put(url, urlIdPair);
+                // associate created url id pair to id
+                IndexStorageBarrel.idToUrlKeyPairMap.put(id, urlIdPair);
+                // put parsed url on main hash map, associating it with the url id pair
+                IndexStorageBarrel.parsedUrlsMap.put(urlIdPair, parsedUrl);
+
+                for (int i = 3; i < parsedMessage.size(); i++) {
+                    String word = parsedMessage.get(i);
+                    art.insert(word, id);
+                }
+
+                System.out.println("Parsed and inserted " + url);
+            }
         }
     }
 
@@ -380,79 +441,5 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             return null;
         }
         return object;
-    }
-}
-
-
-class BarrelMessageHelper implements Runnable {
-    private String message;
-    private AdaptiveRadixTree art;
-    private final char DELIMITER;
-
-    public BarrelMessageHelper(String message, AdaptiveRadixTree art, char DELIMITER) {
-        this.message = message;
-        this.art = art;
-        this.DELIMITER = DELIMITER;
-    }
-
-    private ArrayList<String> parseMessage(String message){
-        String[] splitMessage = message.split(Pattern.quote(String.valueOf(DELIMITER)));
-        return new ArrayList<>(Arrays.asList(splitMessage));
-    }
-
-    private boolean hasUrlBeenParsed(String url){
-        return IndexStorageBarrel.urlToUrlKeyPairMap.containsKey(url);
-    }
-
-
-    // TODO maybe don't skip entirely already parsed urls and compare the text to see if there's any new one, and if so, insert it into the tree
-    @Override
-    public void run() {
-        ArrayList<String> parsedMessage = parseMessage(message);
-        //long id = Long.parseLong(parsedMessage.get(0));
-        String url = parsedMessage.get(0);
-        if(hasUrlBeenParsed(url)) { // if url has already been parsed, do nothing
-            ParsedUrlIdPair pair = IndexStorageBarrel.urlToUrlKeyPairMap.get(url);
-            long id = IndexStorageBarrel.parsedUrlsMap.get(pair).id;
-
-            for (int i = 3; i < parsedMessage.size(); i++) {
-                String word = parsedMessage.get(i);
-                art.insert(word, id);
-            }
-        } else {
-            /* try to increment and retrieve the number of parsed urls */
-            long id = -1;
-            for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
-                try {
-                    id = IndexStorageBarrel.gatewayRemote.incrementAndGetParsedUrls();
-                    break;
-                } catch (RemoteException ignored) {
-                }
-            }
-            if (id == -1) return;
-
-            // get title, description and text
-            String title = parsedMessage.get(1);
-            String description = parsedMessage.get(2);
-            //String text = parsedMessage.get(3);
-
-            System.out.println("Parsed and inserted " + url);
-
-            ParsedUrl parsedUrl = new ParsedUrl(url, id, title, description, null); // TODO maybe remove the 'text' variable from the parsed url object
-
-            // create new url id pair
-            ParsedUrlIdPair urlIdPair = new ParsedUrlIdPair(url, id);
-            // associate created url id pair to link
-            IndexStorageBarrel.urlToUrlKeyPairMap.put(url, urlIdPair);
-            // associate created url id pair to id
-            IndexStorageBarrel.idToUrlKeyPairMap.put(id, urlIdPair);
-            // put parsed url on main hash map, associating it with the url id pair
-            IndexStorageBarrel.parsedUrlsMap.put(urlIdPair, parsedUrl);
-
-            for (int i = 3; i < parsedMessage.size(); i++) {
-                String word = parsedMessage.get(i);
-                art.insert(word, id);
-            }
-        }
     }
 }
