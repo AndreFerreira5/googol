@@ -1,10 +1,8 @@
-import java.io.*;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,11 +15,12 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static AtomicLong PARSED_URLS = new AtomicLong();
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
     public static final int PORT = 4322;
+    private static final String host = "localhost";
     public static final char DELIMITER = '|';
     private static double averageLatency = 0;
     private static double totalRequests = 0;
-    private static LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
-    private static ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
+    private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
+    private static final ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
 
 
     protected Gateway() throws RemoteException {}
@@ -227,7 +226,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         try {
             Gateway gateway = new Gateway();
             LocateRegistry.createRegistry(rmiPort);
-            Naming.rebind("//localhost/GatewayService", gateway);
+            Naming.rebind("//" + host + "/GatewayService", gateway);
             System.out.println("Gateway Service bound in registry");
             return true;
         } catch (Exception e) {

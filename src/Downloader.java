@@ -24,6 +24,7 @@ public class Downloader  extends Thread{
     private static final int urlTimeout = 2000;
     private static String multicastAddress;
     private static int port;
+    private static final String host = "localhost";
     private static final int maxRetries = 5;
     private static final int retryDelay = 500; // 1/2 second
     private static char DELIMITER;
@@ -212,7 +213,7 @@ public class Downloader  extends Thread{
 
     private static GatewayRemote connectToGatewayRMI(){
         try {
-            GatewayRemote gateway = (GatewayRemote) Naming.lookup("//localhost/GatewayService");
+            GatewayRemote gateway = (GatewayRemote) Naming.lookup("//" + host + "/GatewayService");
             DELIMITER = gateway.getDelimiter();
             crawlingMaxDepth = gateway.getCrawlingMaxDepth();
             multicastAddress = gateway.getMulticastAddress();
