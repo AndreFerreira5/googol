@@ -242,7 +242,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
         while(true){
             int barrelsNum = barrelsOnline.size();
-            System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size());
+            System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size() + "\t");
             Thread.sleep(5000);
         }
     }
