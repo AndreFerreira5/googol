@@ -115,8 +115,48 @@ public class Client {
                         if(response == null) System.out.println("No results found");
                         // TODO maybe group the results by 10 here
                         else{
-                            for (ArrayList<String> strings : response) {
-                                System.out.println(strings);
+                            int page = 0;
+                            final int pageSize = 10;
+                            Scanner pageScanner = new Scanner(System.in);
+                            boolean keepPaginating = true;
+
+                            while(keepPaginating){
+                                int start = page * pageSize;
+                                int end = Math.min(start + pageSize, response.size());
+
+                                System.out.print("\033[H\033[2J");
+                                System.out.flush();
+
+                                System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize) + "-----");
+                                for(int i=start; i<end; i++){
+                                    System.out.println(response.get(i));
+                                }
+
+                                if (end < response.size()) {
+                                    System.out.println("\n< prev - exit - next >\n");
+                                } else {
+                                    System.out.println("\n< prev - exit >\n");
+                                }
+
+                                String pageCommand = pageScanner.nextLine();
+                                switch (pageCommand) {
+                                    case "next":
+                                        if (end < response.size()) {
+                                            page++;
+                                        }
+                                        break;
+                                    case "prev":
+                                        if (page > 0) {
+                                            page--;
+                                        }
+                                        break;
+                                    case "exit":
+                                        keepPaginating = false;
+                                        break;
+                                    default:
+                                        break;
+                                }
+
                             }
                         }
                         break;
