@@ -92,13 +92,13 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     @Override
     public void registerBarrel(String barrelEndpoint) throws RemoteException {
         barrelsOnline.put(barrelEndpoint, barrelEndpoint);
-        System.out.println("Barrel registered: " + barrelEndpoint);
+        System.out.println("\nBarrel registered: " + barrelEndpoint);
     }
 
     @Override
     public void unregisterBarrel(String barrelEndpoint) throws RemoteException {
         barrelsOnline.remove(barrelEndpoint);
-        System.out.println("Barrel unregistered: " + barrelEndpoint);
+        System.out.println("\nBarrel unregistered: " + barrelEndpoint);
     }
 
     @Override
@@ -239,5 +239,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
     public static void main(String[] args) throws InterruptedException {
         if(!setupGatewayRMI()) System.exit(1);
+
+        while(true){
+            int barrelsNum = barrelsOnline.size();
+            System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size());
+            Thread.sleep(5000);
+        }
     }
 }
