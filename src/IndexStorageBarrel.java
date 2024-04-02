@@ -35,9 +35,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
         try{
-            log("getting multicast message");
             socket.receive(packet);
-            log("got multicast message");
         } catch (IOException e){
             log("Error receiving multicast message.");
             // TODO trigger sync between barrels
@@ -49,8 +47,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
     private static MulticastSocket setupMulticastConn(){
         MulticastSocket socket = null;
-        long attemptStartTime = System.currentTimeMillis(); // Record the start time for attempts
-        long maxAttemptDuration = 3600000; // Maximum duration to attempt (e.g., 1 hour in milliseconds)
         boolean isConnected = false;
 
         while (!isConnected) {
@@ -278,8 +274,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     // TODO return the results based on the popularity instead of just all (also, group them by 10)
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word){
-        long start = System.nanoTime();
-
+        if(word == null) return null;
         ArrayList<ArrayList<String>> results = new ArrayList<>();
 
         ArrayList<Long> linkIndices = getLinkIndices(word);
@@ -295,16 +290,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             results.add(result);
         }
 
-        long end = System.nanoTime();
-        double elapsedTime = (end - start)/1_000_000.0;
-        results.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
         return results;
     }
 
     @Override
     public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words){
-        long start = System.nanoTime();
-
+        if(words == null) return null;
         ArrayList<ArrayList<String>> results = new ArrayList<>();
 
         for(String word : words){
@@ -322,37 +313,35 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             }
         }
 
-        long end = System.nanoTime();
-        double elapsedTime = (end - start)/1_000_000.0;
-        results.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
         return results;
     }
 
 
     @Override
     public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words){
-        if(words == null) return null;
+        if(words == null || words.isEmpty()) return null;
 
-        ArrayList<ArrayList<String>> results = new ArrayList<>();
         ArrayList<ArrayList<Long>> linkIndices = new ArrayList<>();
         for(String word : words){
             ArrayList<Long> indices = getLinkIndices(word);
-            if(indices.isEmpty()) continue;
+            if(indices == null || indices.isEmpty()) return null;
 
             linkIndices.add(indices);
         }
 
         Set<Long> commonElements = new HashSet<>(linkIndices.get(0));
-
-        for(int i=1; i<linkIndices.size(); i++){
+        System.out.println(commonElements);
+        System.out.println(linkIndices.size());
+        for (int i = 1; i < linkIndices.size(); i++) {
             Set<Long> currentSet = new HashSet<>(linkIndices.get(i));
             commonElements.retainAll(currentSet);
 
-            if(commonElements.isEmpty()){
-                return null;
-            }
+            if(commonElements.isEmpty()) return null;
         }
 
+        if (commonElements.isEmpty()) return null;
+
+        ArrayList<ArrayList<String>> results = new ArrayList<>();
         for(long linkIndex : commonElements){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
@@ -447,7 +436,7 @@ class BarrelMessageHelper implements Runnable {
             String description = parsedMessage.get(2);
             //String text = parsedMessage.get(3);
 
-            System.out.println(url + " - " + title + " - " + description);
+            System.out.println("Parsed and inserted " + url);
 
             ParsedUrl parsedUrl = new ParsedUrl(url, id, title, description, null); // TODO maybe remove the 'text' variable from the parsed url object
 

@@ -124,14 +124,23 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         averageLatency = (averageLatency + latency) / ++totalRequests;
     }
 
-    private double getAverageLatency() {
+    private double getAverageLatencySeconds() {
+        return averageLatency/1_000_000_000.0;
+    }
+    private double getAverageLatencyMilliSeconds() {
+        return averageLatency/1_000_000.0;
+    }
+    private double getAverageLatencyMicroSeconds() {
+        return averageLatency/1_000.0;
+    }
+    private double getAverageLatencyNanoSeconds() {
         return averageLatency;
     }
 
     @Override
     public ArrayList<String> getSystemInfo(){
         ArrayList<String> systemInfo = new ArrayList<>();
-        systemInfo.add("Average latency: " + getAverageLatency()); // average latency
+        systemInfo.add("Average latency: " + getAverageLatencySeconds() + "s"); // average latency
         try{
             ArrayList<String> barrels = getRegisteredBarrels();
             StringBuilder barrelsString = new StringBuilder();
@@ -162,8 +171,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         long start = System.nanoTime();
         ArrayList<ArrayList<String>> response = barrel.searchWord(word);
         long end = System.nanoTime();
-        double elapsedTime = (end - start)/1_000_000.0;
-        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        double elapsedTime = end - start;
+        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        updateAverageLatency(elapsedTime);
         return response;
     }
 
@@ -183,8 +193,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         long start = System.nanoTime();
         ArrayList<ArrayList<String>> response = barrel.searchWords(words);
         long end = System.nanoTime();
-        double elapsedTime = (end - start)/1_000_000.0;
-        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        double elapsedTime = end - start;
+        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        updateAverageLatency(elapsedTime);
         return response;
     }
 
@@ -205,8 +216,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         long start = System.nanoTime();
         ArrayList<ArrayList<String>> response = barrel.searchWordSet(words);
         long end = System.nanoTime();
-        double elapsedTime = (end - start)/1_000_000.0;
-        response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        double elapsedTime = end - start;
+        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
+        updateAverageLatency(elapsedTime);
         return response;
     }
 

@@ -263,6 +263,8 @@ public class Downloader  extends Thread{
                     continue;
                 }
 
+                System.out.println("Parsed and sent " + parsedUrlInfo.get(0));
+
             } catch ( Exception ignored){} // catches malformed url and invalid url depth exceptions
         }
     }

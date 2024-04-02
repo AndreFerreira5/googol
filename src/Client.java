@@ -89,7 +89,7 @@ public class Client {
                             boolean added = false;
                             for(int i=0; i<maxRetries; i++){
                                 try {
-                                    response = gatewayRemote.searchWords(words);
+                                    response = gatewayRemote.searchWordSet(words);
                                     added = true;
                                     break;
                                 } catch (RemoteException ignored){}
