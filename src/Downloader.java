@@ -34,7 +34,7 @@ public class Downloader  extends Thread{
         System.out.println("[DOWNLOADER " + uuid.toString().substring(0, 8) + "] " + text);
     }
 
-    private static ArrayList<String> parseRawUrl(RawUrl url){
+    private static ArrayList<String>[] parseRawUrl(RawUrl url){
         String link = url.url;
         int depth = url.depth;
         if(depth > crawlingMaxDepth) { // if depth exceeds crawling max depth skip
@@ -53,13 +53,17 @@ public class Downloader  extends Thread{
             // get all urls inside the url and put it in the queue
             Elements subUrls = doc.select("a[href]");
             ArrayList<RawUrl> rawUrls = new ArrayList<>();
+            ArrayList<String> fatherUrls = new ArrayList<>();
+            fatherUrls.add("FATHER_URLS" + DELIMITER); // FATHER_URLS for the barrels to know what to do
+            fatherUrls.add(link + DELIMITER); // url for the barrel to add to as father url to all the following urls
+
             for(Element subUrl : subUrls){
                 String href = subUrl.attr("abs:href");
                 // try to add url to deque depending on the crawling strategy
+                fatherUrls.add(href + DELIMITER);
                 try{
                     RawUrl rawUrl = new RawUrl(href, depth+1);
                     rawUrls.add(rawUrl);
-                    //crawlingStrategy.addUrl(deque, new RawUrl(href, depth+1));
                 } catch (Exception ignored){} // if url is invalid or depth exceeds the max, just ignore it and go to the next url
             }
 
@@ -78,7 +82,7 @@ public class Downloader  extends Thread{
             String title = doc.title();
             String description = doc.select("meta[name=description]").attr("content");
             //String keywords = doc.select("meta[name=keywords]").attr("content");
-            String text = doc.body().text().replaceAll(String.valueOf(DELIMITER), "");
+            String text = doc.body().text().replaceAll(String.valueOf(DELIMITER), ""); // remove | from the text to prevent conflicts
 
             if(link == null || title == null || description == null || text == null) return null;
             ArrayList<String> parsedUrlInfo = new ArrayList<>();
@@ -86,7 +90,7 @@ public class Downloader  extends Thread{
             parsedUrlInfo.add(title);
             parsedUrlInfo.add(description);
             parsedUrlInfo.addAll(getUniqueWordsFromText(text));
-            return parsedUrlInfo;
+            return new ArrayList[]{parsedUrlInfo, fatherUrls}; // return father urls and parsedUrlInfo;
         } catch (IOException e) { // TODO notify user that the url he requested is invalid
             // TODO trigger barrel sync
             return null;
@@ -145,7 +149,7 @@ public class Downloader  extends Thread{
     }
 
 
-    private static void transmitToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
+    private static void transmitUrlInfoToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
         // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
         final int MAX_PACKET_SIZE = 65507;
 
@@ -210,6 +214,67 @@ public class Downloader  extends Thread{
     }
 
 
+    private static void transmitFatherUrlsToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
+        // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
+        final int MAX_PACKET_SIZE = 65507;
+
+        String fatherUrlIdentifier = buffer.get(0);
+        String fatherUrl = buffer.get(1);
+
+        BiConsumer<ByteBuffer, Integer> sendPacket = (byteBuffer, size) -> {
+            try {
+                InetAddress group = InetAddress.getByName(multicastAddress);
+                DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                socket.send(packet);
+            } catch (IOException e) {
+                log("Error transmitting to barrels. Retrying in " + retryDelay + "s...");
+                try {
+                    Thread.sleep(retryDelay); // wait before retrying
+                    InetAddress group = InetAddress.getByName(multicastAddress);
+                    DatagramPacket packet = new DatagramPacket(byteBuffer.array(), size, group, port);
+                    socket.send(packet);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log("Interrupted during retry wait! Interrupting...");
+                    //interrupt();
+                } catch (IOException ex) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+
+        ByteBuffer dataBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE);
+        int currentSize = 0;
+
+        byte[] fatherUrlIdentifierBytes = (fatherUrlIdentifier + DELIMITER).getBytes(StandardCharsets.UTF_8);
+        byte[] fatherUrlBytes = (fatherUrl + DELIMITER).getBytes(StandardCharsets.UTF_8);
+
+        dataBuffer.put(fatherUrlIdentifierBytes);
+        dataBuffer.put(fatherUrlBytes);
+        currentSize = fatherUrlIdentifierBytes.length + fatherUrlBytes.length;
+        // TODO improve this, when a a packet is larger than MAX_PACKET_SIZE and needs to be segmented, the title and description dont need to be transmitted again
+        for(int i=2; i<buffer.size(); i++){
+            byte[] messageBytes = buffer.get(i).getBytes(StandardCharsets.UTF_8);
+            if (currentSize + messageBytes.length > MAX_PACKET_SIZE) {
+                // Send current buffer and reset for next chunk
+                sendPacket.accept(dataBuffer, currentSize);
+                dataBuffer.clear();
+                dataBuffer.put(fatherUrlIdentifierBytes);
+                dataBuffer.put(fatherUrlBytes);
+                currentSize = fatherUrlIdentifierBytes.length + fatherUrlBytes.length;
+            }
+            dataBuffer.put(messageBytes);
+            currentSize += messageBytes.length;
+        }
+
+        // Send any remaining data
+        if (currentSize > 0) {
+            sendPacket.accept(dataBuffer, currentSize);
+        }
+
+    }
+
+
     private static GatewayRemote connectToGatewayRMI(){
         try {
             GatewayRemote gateway = (GatewayRemote) Naming.lookup("//localhost/GatewayService");
@@ -250,13 +315,16 @@ public class Downloader  extends Thread{
                     continue;
                 }
 
-                ArrayList<String> parsedUrlInfo = parseRawUrl(rawUrl);
-                if(parsedUrlInfo == null) continue;
+                ArrayList<String>[] parsedInfo = parseRawUrl(rawUrl);
+                if(parsedInfo == null) continue;
+
+                ArrayList<String> parsedUrlInfo = parsedInfo[0];
+                ArrayList<String> fatherUrls = parsedInfo[1];
 
                 // transmit buffer through multicast
                 try{
-                    //transmitToBarrels(buffer, parsedUrl.id, socket);
-                    transmitToBarrels(parsedUrlInfo, socket);
+                    transmitUrlInfoToBarrels(parsedUrlInfo, socket);
+                    transmitFatherUrlsToBarrels(fatherUrls, socket);
                 } catch (Exception e){
                     log("Error transmitting to barrels. Skipping...");
                     log(e.getMessage());

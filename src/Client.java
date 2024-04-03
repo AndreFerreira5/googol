@@ -113,7 +113,6 @@ public class Client {
                         }
 
                         if(response == null) System.out.println("No results found");
-                        // TODO maybe group the results by 10 here
                         else{
                             for (ArrayList<String> strings : response) {
                                 System.out.println(strings);
