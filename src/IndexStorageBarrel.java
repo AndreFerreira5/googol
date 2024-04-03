@@ -259,6 +259,108 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    private static long addParsedUrl(String url, String title, String description){
+        /* try to increment and retrieve the number of parsed urls */
+        long id = -1;
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+            try {
+                id = IndexStorageBarrel.gatewayRemote.incrementAndGetParsedUrls();
+                break;
+            } catch (RemoteException ignored) {
+            }
+        }
+        if (id == -1){
+            log("Failed to increment and retrieve the number of parsed urls! (" + url + ")");
+            return -1;
+        }
+
+        ParsedUrl parsedUrl = new ParsedUrl(url, id, title, description, null); // TODO maybe remove the 'text' variable from the parsed url object
+
+        // create new url id pair
+        ParsedUrlIdPair urlIdPair = new ParsedUrlIdPair(url, id);
+        // associate created url id pair to link
+        urlToUrlKeyPairMap.put(url, urlIdPair);
+        // associate created url id pair to id
+        idToUrlKeyPairMap.put(id, urlIdPair);
+        // put parsed url on main hash map, associating it with the url id pair
+        parsedUrlsMap.put(urlIdPair, parsedUrl);
+
+        return id;
+    }
+
+
+    private static void indexUrl(ArrayList<String> parsedMessage){
+        if(parsedMessage.size() < 4) return;
+
+        String url = parsedMessage.get(0);
+        if (hasUrlBeenParsed(url)) { // if url has already been parsed
+            ParsedUrlIdPair pair = urlToUrlKeyPairMap.get(url);
+            ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+            long id = parsedUrl.id;
+
+            // make sure the title and description are not null (it can happen when the
+            // url is created whenever processing a father url and that url doesn't exist,
+            // so it's object is created with these 2 fields as null, because the title and description are not known at that time)
+            if(parsedUrl.title == null) parsedUrl.title = parsedMessage.get(1);
+            if(parsedUrl.description == null) parsedUrl.title = parsedMessage.get(2);
+
+            for (int i = 3; i < parsedMessage.size(); i++) {
+                String word = parsedMessage.get(i);
+                art.insert(word, id);
+            }
+            System.out.println("Parsed and updated existing url: " + url);
+
+        } else {
+            // get title, description and text
+            String title = parsedMessage.get(1);
+            String description = parsedMessage.get(2);
+
+            long id = addParsedUrl(url, title, description);
+            if(id == -1) return;
+
+            for (int i = 3; i < parsedMessage.size(); i++) {
+                String word = parsedMessage.get(i);
+                art.insert(word, id);
+            }
+
+            System.out.println("Parsed and inserted " + url);
+        }
+    }
+
+
+    private static void processFatherUrls(ArrayList<String> parsedMessage){
+        if(parsedMessage.size() < 3) return;
+
+        String fatherUrl = parsedMessage.get(1);
+        Long fatherUrlId;
+        if(hasUrlBeenParsed(fatherUrl)){
+            ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(fatherUrl);
+            fatherUrlId = parsedUrlsMap.get(urlIdPair).id;
+        } else {
+            fatherUrlId = addParsedUrl(fatherUrl, null, null);
+            if(fatherUrlId == -1) return;
+        }
+
+        for(int i=2; i<parsedMessage.size(); i++){
+            String childUrl = parsedMessage.get(i);
+
+            if(hasUrlBeenParsed(childUrl)){
+                ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(childUrl);
+                parsedUrlsMap.get(urlIdPair).addFatherUrl(fatherUrlId);
+
+                System.out.println("Added " + fatherUrl + " as a father of existing " + childUrl);
+            } else {
+                long id = addParsedUrl(childUrl, null, null);
+                if(id == -1) return;
+
+                ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(childUrl);
+                parsedUrlsMap.get(urlIdPair).addFatherUrl(fatherUrlId);
+                System.out.println("Added " + fatherUrl + " as a father of newly created " + childUrl);
+            }
+        }
+    }
+
+
     private static void messagesParser() {
         while(true) {
             String message = null;
@@ -273,50 +375,8 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             ArrayList<String> parsedMessage = parseMessage(message);
             //long id = Long.parseLong(parsedMessage.get(0));
             String url = parsedMessage.get(0);
-            if (hasUrlBeenParsed(url)) { // if url has already been parsed, do nothing
-                ParsedUrlIdPair pair = IndexStorageBarrel.urlToUrlKeyPairMap.get(url);
-                long id = IndexStorageBarrel.parsedUrlsMap.get(pair).id;
-
-                for (int i = 3; i < parsedMessage.size(); i++) {
-                    String word = parsedMessage.get(i);
-                    art.insert(word, id);
-                }
-                System.out.println("Parsed and updated existing url: " + url);
-            } else {
-                /* try to increment and retrieve the number of parsed urls */
-                long id = -1;
-                for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
-                    try {
-                        id = IndexStorageBarrel.gatewayRemote.incrementAndGetParsedUrls();
-                        break;
-                    } catch (RemoteException ignored) {
-                    }
-                }
-                if (id == -1) return;
-
-                // get title, description and text
-                String title = parsedMessage.get(1);
-                String description = parsedMessage.get(2);
-                //String text = parsedMessage.get(3);
-
-                ParsedUrl parsedUrl = new ParsedUrl(url, id, title, description, null); // TODO maybe remove the 'text' variable from the parsed url object
-
-                // create new url id pair
-                ParsedUrlIdPair urlIdPair = new ParsedUrlIdPair(url, id);
-                // associate created url id pair to link
-                IndexStorageBarrel.urlToUrlKeyPairMap.put(url, urlIdPair);
-                // associate created url id pair to id
-                IndexStorageBarrel.idToUrlKeyPairMap.put(id, urlIdPair);
-                // put parsed url on main hash map, associating it with the url id pair
-                IndexStorageBarrel.parsedUrlsMap.put(urlIdPair, parsedUrl);
-
-                for (int i = 3; i < parsedMessage.size(); i++) {
-                    String word = parsedMessage.get(i);
-                    art.insert(word, id);
-                }
-
-                System.out.println("Parsed and inserted " + url);
-            }
+            if(url.equals("FATHER_URLS")) processFatherUrls(parsedMessage);
+            else indexUrl(parsedMessage);
         }
     }
 

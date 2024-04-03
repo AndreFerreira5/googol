@@ -1,5 +1,6 @@
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.ArrayList;
 
 public class ParsedUrl implements Serializable {
     @Serial
@@ -10,6 +11,7 @@ public class ParsedUrl implements Serializable {
     public String title;
     public String description;
     public String text;
+    private final ArrayList<Long> fatherUrls = new ArrayList<>();
 
 
     public ParsedUrl(String url, Long id, String title, String description, String text){
@@ -22,5 +24,9 @@ public class ParsedUrl implements Serializable {
 
     public void cleanText(){
         this.text = "";
+    }
+
+    public void addFatherUrl(long id){
+        this.fatherUrls.add(id);
     }
 }
