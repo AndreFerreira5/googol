@@ -1,4 +1,5 @@
 import java.io.*;
+import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -11,7 +12,7 @@ import java.util.regex.Pattern;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
-    private static final AdaptiveRadixTree art = new AdaptiveRadixTree();
+    private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
     private static final String host = "localhost";
     private static final String barrelRMIEndpoint = "//" + host + "/IndexStorageBarrel-" + uuid.toString();
@@ -20,7 +21,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static int port;
     private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
-    private static final int retryDelay = 5;
+    private static final int retryDelay = 1000; // 1 second
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
     private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
@@ -32,6 +33,57 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     protected IndexStorageBarrel() throws RemoteException {}
 
 
+    private static String getRandomBarrelFromGateway(){
+        // unregister barrel in gateway
+        String randomBarrel = "";
+        boolean got = false;
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+            try {
+                gatewayRemote.getRandomBarrelRemote();
+                got = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
+        }
+
+        return randomBarrel;
+    }
+
+
+    private static void syncBarrel(){
+        String randomBarrel = "";
+        while(randomBarrel.isEmpty() || randomBarrel.equals(barrelRMIEndpoint)){
+            randomBarrel = getRandomBarrelFromGateway();
+        }
+
+        IndexStorageBarrelRemote barrel = connectToBarrelRMI(randomBarrel);
+        if (barrel == null) return;
+
+        log("Syncing Barrel with " + randomBarrel);
+
+        // unregister barrel in gateway
+        boolean synced = false;
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+            try {
+                AdaptiveRadixTree barrelART = barrel.getArt();
+                ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> barrelParsedUrlsMap = barrel.getParsedUrlsMap();
+                ConcurrentHashMap<String, ParsedUrlIdPair> barrelUrlToUrlKeyPairMap = barrel.getUrlToUrlKeyPairMap();
+                ConcurrentHashMap<Long, ParsedUrlIdPair> barrelIdToUrlKeyPairMap = barrel.getIdToUrlKeyPairMap();
+                art = barrelART;
+                parsedUrlsMap = barrelParsedUrlsMap;
+                urlToUrlKeyPairMap = barrelUrlToUrlKeyPairMap;
+                idToUrlKeyPairMap = barrelIdToUrlKeyPairMap;
+                synced = true;
+                break;
+            } catch (RemoteException ignored){}
+        }
+        if(!synced) log("Error syncing ART! Proceeding with current ART.");
+        else log("Barrel synced successfully!");
+    }
+
+
     private static String getMulticastMessage(MulticastSocket socket){
         //byte[] dataBuffer = new byte[messageSize];
         byte[] dataBuffer = new byte[65507];
@@ -40,7 +92,8 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             socket.receive(packet);
         } catch (IOException e){
             log("Error receiving multicast message.");
-            // TODO trigger sync between barrels
+            syncBarrel();
+            return null;
         }
 
         return new String(packet.getData(), 0, packet.getLength());
@@ -75,8 +128,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    public void exportART(){
-        exportART(art);
+    @Override
+    public void exportBarrel(){
+        exportDeserializedInfo();
     }
 
 
@@ -102,6 +156,27 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             System.out.println("ERROR OPENING FILE: " + e + "\nSkipping the importation...");
             return false;
         }
+    }
+
+
+    @Override
+    public AdaptiveRadixTree getArt(){
+        return art;
+    }
+
+    @Override
+    public ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> getParsedUrlsMap(){
+        return parsedUrlsMap;
+    }
+
+    @Override
+    public ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap(){
+        return urlToUrlKeyPairMap;
+    }
+
+    @Override
+    public ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap(){
+        return idToUrlKeyPairMap;
     }
 
 
@@ -145,6 +220,18 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+
+    private void exportDeserializedInfo(){
+        log("Exporting Parsed Urls Hash Map...");
+        serializeMap(parsedUrlsMap, "parsedUrlsMap.ser");
+        log("Exporting Urls to Url Key Pairs Hash Map...");
+        serializeMap(urlToUrlKeyPairMap, "urlToUrlKeyPairMap.ser");
+        log("Exporting IDs to Url Key Pairs Hash Map...");
+        serializeMap(idToUrlKeyPairMap, "idToUrlKeyPairMap.ser");
+        exportART(art);
+    }
+
+
     private static GatewayRemote connectToGatewayRMI(){
         try {
             GatewayRemote gateway = (GatewayRemote) Naming.lookup("//localhost/GatewayService");
@@ -154,6 +241,29 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             return gateway;
         } catch (Exception e) {
             System.out.println("GatewayClient exception: " + e.getMessage());
+            return null;
+        }
+    }
+
+
+    private static void reconnectToGatewayRMI(){
+        log("Reconnecting to gateway...");
+        gatewayRemote = null;
+        while(gatewayRemote == null){
+            gatewayRemote = connectToGatewayRMI();
+            try {
+                Thread.sleep(retryDelay);
+            } catch (InterruptedException ignored) {}
+        }
+        log("Reconnected!");
+    }
+
+
+    private static IndexStorageBarrelRemote connectToBarrelRMI(String barrelEndpoint){
+        try {
+            return (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
+        } catch (Exception e) {
+            System.out.println("Barrel exception: " + e.getMessage());
             return null;
         }
     }
@@ -181,9 +291,22 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 gatewayRemote.unregisterBarrel(barrelRMIEndpoint);
                 unregistered = true;
                 break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
             } catch (RemoteException ignored){}
         }
         if(!unregistered) log("Error unregistering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
+
+        multicastMessagesQueue.clear();
+        fixedThreadPool.shutdownNow();
+        try {
+            if (!fixedThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.err.println("Pool did not terminate");
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
 
         System.exit(1);
     }
@@ -192,12 +315,20 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     public static void main(String[] args){
         log("UP!");
 
+        //art.setFilename("barrel-" + uuid.toString() + ".art"); // give each barrel its unique art file
+
         if(importSerializedInfo()) log("Successfully imported serialized info!");
         else log("Failed to import serialized info...");
 
         // setup gateway RMI
-        gatewayRemote = connectToGatewayRMI();
-        if(gatewayRemote == null) System.exit(1);
+        gatewayRemote = null;
+        log("Connecting to gateway...");
+        while(gatewayRemote == null){
+            gatewayRemote = connectToGatewayRMI();
+            try {
+                Thread.sleep(retryDelay);
+            } catch (InterruptedException ignored) {}
+        }
         log("Successfully connected to gateway!");
 
         // register barrel in gateway
@@ -208,6 +339,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 rmiPort = gatewayRemote.getPort();
                 registered = true;
                 break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
             } catch (RemoteException ignored){}
         }
         if (!registered){
@@ -236,6 +370,8 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         try{
             while(true){
                 String message = getMulticastMessage(socket);
+                if (message == null) continue;
+
                 multicastMessagesQueue.add(message);
             }
         } catch (Exception e){
@@ -268,6 +404,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             try {
                 id = IndexStorageBarrel.gatewayRemote.incrementAndGetParsedUrls();
                 break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
             } catch (RemoteException ignored) {
             }
         }
@@ -374,28 +513,30 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static void messagesParser() {
-        while(true) {
-            String message = null;
-            try {
-                message = multicastMessagesQueue.take();
-            } catch (InterruptedException e){
-                Thread.currentThread().interrupt();
-                continue;
-            }
-            if(message == null) continue;
+        boolean running = true;
+            while (running) {
+                String message = null;
+                try {
+                    message = multicastMessagesQueue.take();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    running = false;
+                    continue;
+                }
+                if (message == null) continue;
 
-            ArrayList<String> parsedMessage = parseMessage(message);
-            //long id = Long.parseLong(parsedMessage.get(0));
-            //String url = parsedMessage.get(0);
-            switch(parsedMessage.get(0)){
-                case "FATHER_URLS":
-                    processFatherUrls(parsedMessage);
-                    break;
-                default:
-                    indexUrl(parsedMessage);
-                    break;
+                ArrayList<String> parsedMessage = parseMessage(message);
+                //long id = Long.parseLong(parsedMessage.get(0));
+                //String url = parsedMessage.get(0);
+                switch (parsedMessage.get(0)) {
+                    case "FATHER_URLS":
+                        processFatherUrls(parsedMessage);
+                        break;
+                    default:
+                        indexUrl(parsedMessage);
+                        break;
+                }
             }
-        }
     }
 
 

@@ -1,3 +1,4 @@
+import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
@@ -6,6 +7,8 @@ import java.util.Scanner;
 
 public class Client {
     private static final int maxRetries = 5;
+    private static final int retryDelay = 1000;
+    private static GatewayRemote gatewayRemote;
     private static final String[] AVAILABLE_COMMANDS = {"help",
                                                         "clear",
                                                         "index",
@@ -30,6 +33,19 @@ public class Client {
     }
 
 
+    private static void reconnectToGatewayRMI(){
+        System.out.println("Reconnecting to gateway...");
+        gatewayRemote = null;
+        while(gatewayRemote == null){
+            gatewayRemote = connectToGatewayRMI();
+            try {
+                Thread.sleep(retryDelay);
+            } catch (InterruptedException ignored) {}
+        }
+        System.out.println("Reconnected!");
+    }
+
+
     private static void printAvailableCommands(){
         System.out.println("AVAILABLE COMMANDS");
         for(int i=0; i<AVAILABLE_COMMANDS.length; i++){
@@ -42,7 +58,7 @@ public class Client {
         Scanner scanner = new Scanner(System.in);
 
         // setup gateway RMI
-        GatewayRemote gatewayRemote = connectToGatewayRMI();
+        gatewayRemote = connectToGatewayRMI();
         if(gatewayRemote == null) System.exit(1);
         System.out.println("Successfully connected to gateway!");
 
@@ -73,6 +89,9 @@ public class Client {
                                 gatewayRemote.addUrlsToUrlsDeque(urls);
                                 added = true;
                                 break;
+                            } catch( ConnectException e){
+                                reconnectToGatewayRMI();
+                                i--;
                             } catch (RemoteException ignored){}
                         }
                         if(!added) System.out.println("Error adding urls to deque!");
@@ -84,6 +103,9 @@ public class Client {
                                 gatewayRemote.addUrlToUrlsDeque(splitInput[1]);
                                 added = true;
                                 break;
+                            } catch( ConnectException e){
+                                reconnectToGatewayRMI();
+                                i--;
                             } catch (RemoteException ignored){}
                         }
                         if(!added) System.out.println("Error adding url to deque!");
@@ -103,6 +125,9 @@ public class Client {
                                 response = gatewayRemote.searchWordSet(words);
                                 added = true;
                                 break;
+                            } catch( ConnectException e){
+                                reconnectToGatewayRMI();
+                                i--;
                             } catch (RemoteException ignored){}
                         }
                         if(!added) System.out.println("Error searching!");
@@ -113,6 +138,9 @@ public class Client {
                                 response = gatewayRemote.searchWord(splitInput[1]);
                                 added = true;
                                 break;
+                            } catch( ConnectException e){
+                                reconnectToGatewayRMI();
+                                i--;
                             } catch (RemoteException ignored){
                             }
                         }
@@ -144,11 +172,11 @@ public class Client {
                             }
 
                             if (start == 0) {
-                                System.out.println("\nexit - next >\n>");
+                                System.out.print("\nexit - next >\n>");
                             } else if (end == response.size()){
-                                System.out.println("\n< prev - exit\n>");
+                                System.out.print("\n< prev - exit\n>");
                             } else {
-                                System.out.println("\n< prev - exit - next >\n>");
+                                System.out.print("\n< prev - exit - next >\n>");
                             }
 
                             String pageCommand = pageScanner.nextLine();
@@ -181,6 +209,9 @@ public class Client {
                             status = gatewayRemote.getSystemInfo();
                             success = true;
                             break;
+                        } catch( ConnectException e){
+                            reconnectToGatewayRMI();
+                            i--;
                         } catch (RemoteException ignored){}
                     }
                     if(!success) System.out.println("Error getting system status!");

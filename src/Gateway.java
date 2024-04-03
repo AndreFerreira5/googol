@@ -2,11 +2,25 @@ import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.Collection;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.ArrayList;
+
+
+class BarrelMetrics {
+    private double averageResponseTime = 0;
+    private long requestCount = 0;
+
+    public void updateMetrics(double responseTime) {
+        averageResponseTime += (averageResponseTime + responseTime) / ++requestCount;
+    }
+
+    public double getAverageResponseTime() {
+        return averageResponseTime;
+    }
+}
+
 
 public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     private static final int rmiPort = 1099;
@@ -17,11 +31,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static final int PORT = 4322;
     private static final String host = "localhost";
     public static final char DELIMITER = '|';
-    private static final int barrelExportationInterval = 60000; // 60 seconds
-    private static double averageLatency = 0;
-    private static double totalRequests = 0;
     private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
     private static final ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
+    private static final HashMap<String, BarrelMetrics> barrelMetricsMap = new HashMap<>();
+    private static final HashMap<String, Integer> searchedStrings = new HashMap<>();
+
 
 
     protected Gateway() throws RemoteException {}
@@ -92,12 +106,14 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     @Override
     public void registerBarrel(String barrelEndpoint) throws RemoteException {
         barrelsOnline.put(barrelEndpoint, barrelEndpoint);
+        barrelMetricsMap.put(barrelEndpoint, new BarrelMetrics());
         System.out.println("\nBarrel registered: " + barrelEndpoint);
     }
 
     @Override
     public void unregisterBarrel(String barrelEndpoint) throws RemoteException {
         barrelsOnline.remove(barrelEndpoint);
+        barrelMetricsMap.remove(barrelEndpoint);
         System.out.println("\nBarrel unregistered: " + barrelEndpoint);
     }
 
@@ -112,35 +128,76 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
     //TODO make more functions so the barrels send their load info to the gateway so it can choose dynamically which one to get info from
 
-    private String getRandomBarrel(){
+    @Override
+    public String getRandomBarrelRemote() throws RemoteException {
+        return getRandomBarrel();
+    }
+
+
+    public static void countSearch(String search) {
+        searchedStrings.put(search, searchedStrings.getOrDefault(search, 0) + 1);
+    }
+
+    public static String[] getTopTenSearchs() {
+        PriorityQueue<Map.Entry<String, Integer>> pq = new PriorityQueue<>((a, b) -> b.getValue().compareTo(a.getValue()));
+        pq.addAll(searchedStrings.entrySet());
+
+        return pq.stream()
+                .limit(10)
+                .map(entry -> {
+                    // remove leading and trailing brackets and replace commas with spaces
+                    String phrase = entry.getKey().replaceAll("^\\[|\\]$", "").replace(", ", " ");
+                    return phrase + ": " + entry.getValue();
+                })
+                .toArray(String[]::new);
+    }
+
+
+    public String getAverageResponseTimeByBarrel() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Average response times:");
+        barrelMetricsMap.forEach((barrel, metrics) -> {
+            if (!sb.isEmpty()) {
+                sb.append("\n");
+            }
+            sb.append(barrel).append(": ").append(String.format("%.4f", metrics.getAverageResponseTime() / 1_000_000_000.0)).append("s");
+        });
+        return sb.append("\n").toString(); // trailing newline
+    }
+
+
+    private static String getRandomBarrel(){
         if(barrelsOnline.isEmpty()) return null;
         Collection<String> collection = barrelsOnline.values();
         int random = (int) (Math.random() * collection.size());
         return collection.toArray()[random].toString();
     }
 
-
-    private void updateAverageLatency(double latency) {
-        averageLatency = (averageLatency + latency) / ++totalRequests;
+    private static void exportAllBarrels(){
+        for(String barrelEndpoint: barrelsOnline.values()){
+            exportBarrel(barrelEndpoint);
+        }
     }
 
-    private double getAverageLatencySeconds() {
-        return averageLatency/1_000_000_000.0;
-    }
-    private double getAverageLatencyMilliSeconds() {
-        return averageLatency/1_000_000.0;
-    }
-    private double getAverageLatencyMicroSeconds() {
-        return averageLatency/1_000.0;
-    }
-    private double getAverageLatencyNanoSeconds() {
-        return averageLatency;
+    private static void exportBarrel(String barrelEndpoint) {
+        if (barrelEndpoint == null){
+            System.out.println("Invalid barrel endpoint");
+            return;
+        }
+
+        IndexStorageBarrelRemote barrelRemote;
+        try {
+            barrelRemote = (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
+            barrelRemote.exportBarrel();
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+        }
     }
 
     @Override
     public ArrayList<String> getSystemInfo(){
         ArrayList<String> systemInfo = new ArrayList<>();
-        systemInfo.add("Average latency: " + getAverageLatencySeconds() + "s"); // average latency
+        systemInfo.add(getAverageResponseTimeByBarrel()); // average latency
         try{
             ArrayList<String> barrels = getRegisteredBarrels();
             StringBuilder barrelsString = new StringBuilder();
@@ -151,12 +208,14 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             systemInfo.add(String.valueOf(barrelsString)); // registered barrels
         } catch (RemoteException ignored) {}
 
-        // TODO also return top 10 visited urls
+        systemInfo.add("Top 10 searches: \n" + String.join("\n", getTopTenSearchs())); // top 10 searches
         return systemInfo;
     }
 
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException{
+        countSearch(word);
+
         String randomBarrel = getRandomBarrel();
         if (randomBarrel == null) return null;
 
@@ -172,13 +231,17 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         ArrayList<ArrayList<String>> response = barrel.searchWord(word);
         long end = System.nanoTime();
         double elapsedTime = end - start;
-        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
-        updateAverageLatency(elapsedTime);
+
+        System.out.println("Elapsed time: " + elapsedTime / 1_000_000_000.0 + "s");
+
+        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
         return response;
     }
 
     @Override
     public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException{
+        countSearch(String.valueOf(words));
+
         String randomBarrel = getRandomBarrel();
         if (randomBarrel == null) return null;
 
@@ -194,14 +257,16 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         ArrayList<ArrayList<String>> response = barrel.searchWords(words);
         long end = System.nanoTime();
         double elapsedTime = end - start;
-        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
-        updateAverageLatency(elapsedTime);
+
+        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
         return response;
     }
 
 
     @Override
     public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException{
+        countSearch(String.valueOf(words));
+
         String randomBarrel = getRandomBarrel();
         if (randomBarrel == null) return null;
 
@@ -217,8 +282,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         ArrayList<ArrayList<String>> response = barrel.searchWordSet(words);
         long end = System.nanoTime();
         double elapsedTime = end - start;
-        //response.add(new ArrayList<>(Collections.singletonList("Elapsed time: " + elapsedTime + "ms")));
-        updateAverageLatency(elapsedTime);
+
+        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
         return response;
     }
 
@@ -240,10 +305,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static void main(String[] args) throws InterruptedException {
         if(!setupGatewayRMI()) System.exit(1);
 
+        int infoInterval = 2000;
         while(true){
             int barrelsNum = barrelsOnline.size();
             System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size() + "\t");
-            Thread.sleep(5000);
+            Thread.sleep(infoInterval);
         }
     }
 }
