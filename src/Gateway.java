@@ -17,6 +17,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static final int PORT = 4322;
     private static final String host = "localhost";
     public static final char DELIMITER = '|';
+    private static final int barrelExportationInterval = 60000; // 60 seconds
     private static double averageLatency = 0;
     private static double totalRequests = 0;
     private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();

@@ -139,15 +139,16 @@ public class Client {
 
                             System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
                             for(int i=start; i<end; i++){
-                                System.out.println(response.get(i));
+                                ArrayList<String> pageLine = response.get(i);
+                                System.out.println(pageLine.get(0) + " - " + pageLine.get(1) + (pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
                             }
 
                             if (start == 0) {
-                                System.out.println("\nexit - next >\n");
+                                System.out.println("\nexit - next >\n>");
                             } else if (end == response.size()){
-                                System.out.println("\n< prev - exit\n");
+                                System.out.println("\n< prev - exit\n>");
                             } else {
-                                System.out.println("\n< prev - exit - next >\n");
+                                System.out.println("\n< prev - exit - next >\n>");
                             }
 
                             String pageCommand = pageScanner.nextLine();
