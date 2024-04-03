@@ -55,8 +55,8 @@ public class Downloader  extends Thread{
             Elements subUrls = doc.select("a[href]");
             ArrayList<RawUrl> rawUrls = new ArrayList<>();
             ArrayList<String> fatherUrls = new ArrayList<>();
-            fatherUrls.add("FATHER_URLS" + DELIMITER); // FATHER_URLS for the barrels to know what to do
-            fatherUrls.add(link + DELIMITER); // url for the barrel to add to as father url to all the following urls
+            fatherUrls.add("FATHER_URLS"); // FATHER_URLS for the barrels to know what to do
+            fatherUrls.add(link); // url for the barrel to add to as father url to all the following urls
 
             for(Element subUrl : subUrls){
                 String href = subUrl.attr("abs:href");

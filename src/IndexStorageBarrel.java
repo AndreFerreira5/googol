@@ -250,7 +250,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static ArrayList<String> parseMessage(String message){
+        //System.out.println("UNPARSED MESSAGE: " + message);
         String[] splitMessage = message.split(Pattern.quote(String.valueOf(DELIMITER)));
+        //System.out.println("PARSED MESSAGE: " + Arrays.toString(splitMessage));
         return new ArrayList<>(Arrays.asList(splitMessage));
     }
 
@@ -270,7 +272,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             }
         }
         if (id == -1){
-            log("Failed to increment and retrieve the number of parsed urls! (" + url + ")");
+            System.out.println("Failed to increment and retrieve the number of parsed urls! (" + url + ")");
             return -1;
         }
 
@@ -332,10 +334,14 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         if(parsedMessage.size() < 3) return;
 
         String fatherUrl = parsedMessage.get(1);
+        //System.out.println("FATHER URL: " + fatherUrl);
         Long fatherUrlId;
         if(hasUrlBeenParsed(fatherUrl)){
             ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(fatherUrl);
-            fatherUrlId = parsedUrlsMap.get(urlIdPair).id;
+            if(urlIdPair == null) return;
+            ParsedUrl parsedFatherUrl = parsedUrlsMap.get(urlIdPair);
+            if(parsedFatherUrl == null) return;
+            fatherUrlId = parsedFatherUrl.id;
         } else {
             fatherUrlId = addParsedUrl(fatherUrl, null, null);
             if(fatherUrlId == -1) return;
@@ -346,7 +352,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
             if(hasUrlBeenParsed(childUrl)){
                 ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(childUrl);
-                parsedUrlsMap.get(urlIdPair).addFatherUrl(fatherUrlId);
+                if(urlIdPair == null) continue;
+                ParsedUrl parsedChildUrl = parsedUrlsMap.get(urlIdPair);
+                if(parsedChildUrl == null) continue;
+                parsedChildUrl.addFatherUrl(fatherUrlId);
 
                 System.out.println("Added " + fatherUrl + " as a father of existing " + childUrl);
             } else {
@@ -354,7 +363,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 if(id == -1) return;
 
                 ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(childUrl);
-                parsedUrlsMap.get(urlIdPair).addFatherUrl(fatherUrlId);
+                if(urlIdPair == null) continue;
+                ParsedUrl parsedChildUrl = parsedUrlsMap.get(urlIdPair);
+                if(parsedChildUrl == null) continue;
+                parsedChildUrl.addFatherUrl(fatherUrlId);
                 System.out.println("Added " + fatherUrl + " as a father of newly created " + childUrl);
             }
         }
@@ -374,9 +386,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
             ArrayList<String> parsedMessage = parseMessage(message);
             //long id = Long.parseLong(parsedMessage.get(0));
-            String url = parsedMessage.get(0);
-            if(url.equals("FATHER_URLS")) processFatherUrls(parsedMessage);
-            else indexUrl(parsedMessage);
+            //String url = parsedMessage.get(0);
+            switch(parsedMessage.get(0)){
+                case "FATHER_URLS":
+                    processFatherUrls(parsedMessage);
+                    break;
+                default:
+                    indexUrl(parsedMessage);
+                    break;
+            }
         }
     }
 
