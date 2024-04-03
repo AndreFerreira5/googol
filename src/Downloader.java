@@ -1,6 +1,7 @@
 import java.net.*;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
+import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.util.function.BiConsumer;
@@ -26,7 +27,7 @@ public class Downloader  extends Thread{
     private static int port;
     private static final String host = "localhost";
     private static final int maxRetries = 5;
-    private static final int retryDelay = 500; // 1/2 second
+    private static final int retryDelay = 1000; // 1 second
     private static char DELIMITER;
     private static GatewayRemote gatewayRemote;
 
@@ -93,7 +94,6 @@ public class Downloader  extends Thread{
             parsedUrlInfo.addAll(getUniqueWordsFromText(text));
             return new ArrayList[]{parsedUrlInfo, fatherUrls}; // return father urls and parsedUrlInfo;
         } catch (IOException e) { // TODO notify user that the url he requested is invalid
-            // TODO trigger barrel sync
             return null;
         } catch (Exception e){
             return null;
@@ -291,6 +291,19 @@ public class Downloader  extends Thread{
     }
 
 
+    private static void reconnectToGatewayRMI(){
+        log("Reconnecting to gateway...");
+        gatewayRemote = null;
+        while(gatewayRemote == null){
+            gatewayRemote = connectToGatewayRMI();
+            try {
+                Thread.sleep(retryDelay);
+            } catch (InterruptedException ignored) {}
+        }
+        log("Reconnected!");
+    }
+
+
     public static void main(String[] args) {
         log("UP!");
 
@@ -311,6 +324,9 @@ public class Downloader  extends Thread{
                 RawUrl rawUrl;
                 try {
                     rawUrl = gatewayRemote.getUrlFromDeque();
+                } catch (ConnectException e){ // if there is a connection error try to connect again until it connects
+                    reconnectToGatewayRMI();
+                    continue;
                 } catch (Exception e){
                     log("Error getting url from deque: " + e.getMessage());
                     continue;

@@ -112,11 +112,37 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
     //TODO make more functions so the barrels send their load info to the gateway so it can choose dynamically which one to get info from
 
-    private String getRandomBarrel(){
+    @Override
+    public String getRandomBarrelRemote() throws RemoteException {
+        return getRandomBarrel();
+    }
+
+    private static String getRandomBarrel(){
         if(barrelsOnline.isEmpty()) return null;
         Collection<String> collection = barrelsOnline.values();
         int random = (int) (Math.random() * collection.size());
         return collection.toArray()[random].toString();
+    }
+
+    private static void exportAllBarrels(){
+        for(String barrelEndpoint: barrelsOnline.values()){
+            exportBarrel(barrelEndpoint);
+        }
+    }
+
+    private static void exportBarrel(String barrelEndpoint) {
+        if (barrelEndpoint == null){
+            System.out.println("Invalid barrel endpoint");
+            return;
+        }
+
+        IndexStorageBarrelRemote barrelRemote;
+        try {
+            barrelRemote = (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
+            barrelRemote.exportBarrel();
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+        }
     }
 
 
@@ -240,10 +266,21 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static void main(String[] args) throws InterruptedException {
         if(!setupGatewayRMI()) System.exit(1);
 
+        int infoInterval = 2000;
         while(true){
-            int barrelsNum = barrelsOnline.size();
-            System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size() + "\t");
-            Thread.sleep(5000);
+
+            int cumulativeSleep = 0;
+            while(cumulativeSleep < barrelExportationInterval) {
+                int barrelsNum = barrelsOnline.size();
+                System.out.print("\rBarrels online: " + barrelsNum + " - Urls in queue: " + urlsDeque.size() + "\t");
+                Thread.sleep(infoInterval);
+                cumulativeSleep += infoInterval;
+            }
+
+            // deserialize barrel
+            String barrel = getRandomBarrel();
+            System.out.println("\nExporting barrel: " + barrel);
+            exportBarrel(barrel);
         }
     }
 }
