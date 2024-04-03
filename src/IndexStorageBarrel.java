@@ -8,6 +8,7 @@ import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -22,9 +23,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
     private static final int retryDelay = 1000; // 1 second
+    private static final int availabilityUpdateDelay = 1000; // 1 second
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
     private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
+    private static final ThreadPoolExecutor fixedThreadPoolExecutor = (ThreadPoolExecutor) fixedThreadPool;
+    protected static final AtomicInteger waitingThreadsNum = new AtomicInteger(0);
     protected static BlockingQueue<String> multicastMessagesQueue = new LinkedBlockingQueue<>();
     protected static ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
@@ -312,6 +316,36 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    private static void updateAvailability() {
+        int totalThreads = fixedThreadPoolExecutor.getCorePoolSize();
+        while (true){
+            System.out.println("THREADS WAITING: " + waitingThreadsNum.get());
+            int busyThreads = fixedThreadPoolExecutor.getActiveCount();
+            int availableThreads = totalThreads - busyThreads + waitingThreadsNum.get();
+            double availability = (double) availableThreads / totalThreads;
+
+            System.out.println("total threads: " + totalThreads + " | busy threads: " + busyThreads + " | available threads: " + availableThreads + " | availability: " + availability);
+
+            // register barrel in gateway
+            boolean set = false;
+            for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+                try {
+                    gatewayRemote.setBarrelAvailability(barrelRMIEndpoint, availability);
+                    set = true;
+                    break;
+                } catch (ConnectException e) {
+                    reconnectToGatewayRMI();
+                    i--;
+                } catch (RemoteException ignored) {
+                }
+            }
+            // ignore if failed
+
+            try {
+                Thread.sleep(availabilityUpdateDelay);
+            } catch (InterruptedException ignored) {}
+        }
+    }
     public static void main(String[] args){
         log("UP!");
 
@@ -367,6 +401,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
 
+        // start thread responsible to update availability on the gateway
+        new Thread(IndexStorageBarrel::updateAvailability).start();
+
         try{
             while(true){
                 String message = getMulticastMessage(socket);
@@ -377,7 +414,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         } catch (Exception e){
             log("Error receiving message: " + e);
         } finally {
-            fixedThreadPool.shutdown();
+            fixedThreadPool.shutdownNow();
             exportART(art);
             exit();
         }
@@ -517,7 +554,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             while (running) {
                 String message = null;
                 try {
+                    waitingThreadsNum.incrementAndGet();
                     message = multicastMessagesQueue.take();
+                    waitingThreadsNum.decrementAndGet();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     running = false;
@@ -556,22 +595,37 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word){
         if(word == null) return null;
-        ArrayList<ArrayList<String>> results = new ArrayList<>();
+        PriorityQueue<ArrayList<String>> results = new PriorityQueue<>(new Comparator<ArrayList<String>>() {
+            @Override
+            public int compare(ArrayList<String> result1, ArrayList<String> result2) {
+                ParsedUrl parsedUrl1 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result1.get(0)));
+                ParsedUrl parsedUrl2 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result2.get(0)));
+                // sorting in descending order of father urls count
+                return Integer.compare(parsedUrl2.getFatherUrls().size(), parsedUrl1.getFatherUrls().size());
+            }
+        });
 
         ArrayList<Long> linkIndices = getLinkIndices(word);
         if(linkIndices == null || linkIndices.isEmpty()) return null;
+
         for(long linkIndex : linkIndices){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
             ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+
             result.add(parsedUrl.url);
             result.add(parsedUrl.title);
             result.add(parsedUrl.description);
 
-            results.add(result);
+            results.offer(result);
         }
 
-        return results;
+        ArrayList<ArrayList<String>> sortedResults = new ArrayList<>();
+        while (!results.isEmpty()) {
+            sortedResults.add(results.poll());  // Retrieve and remove the head of this queue
+        }
+
+        return sortedResults;
     }
 
     @Override
@@ -611,8 +665,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
 
         Set<Long> commonElements = new HashSet<>(linkIndices.get(0));
-        System.out.println(commonElements);
-        System.out.println(linkIndices.size());
         for (int i = 1; i < linkIndices.size(); i++) {
             Set<Long> currentSet = new HashSet<>(linkIndices.get(i));
             commonElements.retainAll(currentSet);
@@ -622,7 +674,16 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
         if (commonElements.isEmpty()) return null;
 
-        ArrayList<ArrayList<String>> results = new ArrayList<>();
+        PriorityQueue<ArrayList<String>> results = new PriorityQueue<>(new Comparator<ArrayList<String>>() {
+            @Override
+            public int compare(ArrayList<String> result1, ArrayList<String> result2) {
+                ParsedUrl parsedUrl1 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result1.get(0)));
+                ParsedUrl parsedUrl2 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result2.get(0)));
+                // sorting in descending order of father urls count
+                return Integer.compare(parsedUrl2.getFatherUrls().size(), parsedUrl1.getFatherUrls().size());
+            }
+        });
+
         for(long linkIndex : commonElements){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
@@ -631,10 +692,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             result.add(parsedUrl.title);
             result.add(parsedUrl.description);
 
-            results.add(result);
+            results.offer(result);
         }
 
-        return results;
+        ArrayList<ArrayList<String>> sortedResults = new ArrayList<>();
+        while (!results.isEmpty()) {
+            sortedResults.add(results.poll());
+        }
+
+        return sortedResults;
     }
 
 

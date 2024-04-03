@@ -11,9 +11,9 @@ public interface GatewayRemote extends Remote{
     int getPort() throws RemoteException;
     RawUrl getUrlFromDeque() throws InterruptedException, RemoteException;
     void addUrlToUrlsDeque(RawUrl rawUrl) throws RemoteException;
-    void addUrlToUrlsDeque(String url) throws RemoteException;
+    boolean addUrlToUrlsDeque(String url) throws RemoteException;
     void addRawUrlsToUrlsDeque(ArrayList<RawUrl> rawUrls) throws RemoteException;
-    void addUrlsToUrlsDeque(ArrayList<String> rawUrls) throws RemoteException;
+    ArrayList<Integer> addUrlsToUrlsDeque(ArrayList<String> rawUrls) throws RemoteException;
     void incrementParsedUrls() throws RemoteException;
     long getParsedUrls() throws RemoteException;
     long incrementAndGetParsedUrls() throws RemoteException;
@@ -21,9 +21,11 @@ public interface GatewayRemote extends Remote{
     void unregisterBarrel(String barrelEndpoint) throws RemoteException;
     ArrayList<String> getRegisteredBarrels() throws RemoteException;
     int getRegisteredBarrelsCount() throws RemoteException;
+    String getRandomBarrelRemote() throws RemoteException;
+    String getMostAvailableBarrelRemote() throws RemoteException;
+    void setBarrelAvailability(String barrelEndpoint, double availability) throws RemoteException;
     ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException;
     ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException;
     ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException;
     ArrayList<String> getSystemInfo() throws RemoteException;
-    String getRandomBarrelRemote() throws RemoteException;
 }

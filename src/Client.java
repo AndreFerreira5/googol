@@ -83,10 +83,11 @@ public class Client {
                     if(splitInput.length > 2){ // when indexing more than 1 url
                         ArrayList<String> urls = new ArrayList<>(Arrays.asList(splitInput).subList(1, splitInput.length));
 
+                        ArrayList<Integer> result = null;
                         boolean added = false;
                         for(int i=0; i<maxRetries; i++){
                             try {
-                                gatewayRemote.addUrlsToUrlsDeque(urls);
+                                result = gatewayRemote.addUrlsToUrlsDeque(urls);
                                 added = true;
                                 break;
                             } catch( ConnectException e){
@@ -95,12 +96,22 @@ public class Client {
                             } catch (RemoteException ignored){}
                         }
                         if(!added) System.out.println("Error adding urls to deque!");
+                        else{
+                            if(result != null){
+                                System.out.print("Not indexed bad URLs: ");
+                                for (Integer integer : result) {
+                                    System.out.print(urls.get(integer) + " ");
+                                }
+                                System.out.println();
+                            }
+                        }
 
                     } else if (splitInput.length == 2){ // when indexing only one url
+                        boolean result = false;
                         boolean added = false;
                         for(int i=0; i<maxRetries; i++){
                             try {
-                                gatewayRemote.addUrlToUrlsDeque(splitInput[1]);
+                                result = gatewayRemote.addUrlToUrlsDeque(splitInput[1]);
                                 added = true;
                                 break;
                             } catch( ConnectException e){
@@ -109,6 +120,9 @@ public class Client {
                             } catch (RemoteException ignored){}
                         }
                         if(!added) System.out.println("Error adding url to deque!");
+                        else{
+                            if(result == false) System.out.println("Bad url, not indexed!");
+                        }
                     } else { // when no url is provided
                         System.out.println("Missing url to index");
                     }
@@ -168,7 +182,7 @@ public class Client {
                             System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
                             for(int i=start; i<end; i++){
                                 ArrayList<String> pageLine = response.get(i);
-                                System.out.println(pageLine.get(0) + " - " + pageLine.get(1) + (pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                                System.out.println(pageLine.get(0) + " - " + pageLine.get(1) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
                             }
 
                             if (start == 0) {
