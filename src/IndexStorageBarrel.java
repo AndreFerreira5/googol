@@ -298,12 +298,24 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
         if(!unregistered) log("Error unregistering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
 
+        multicastMessagesQueue.clear();
+        fixedThreadPool.shutdownNow();
+        try {
+            if (!fixedThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.err.println("Pool did not terminate");
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+
         System.exit(1);
     }
 
 
     public static void main(String[] args){
         log("UP!");
+
+        //art.setFilename("barrel-" + uuid.toString() + ".art"); // give each barrel its unique art file
 
         if(importSerializedInfo()) log("Successfully imported serialized info!");
         else log("Failed to import serialized info...");
@@ -501,28 +513,30 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static void messagesParser() {
-        while(true) {
-            String message = null;
-            try {
-                message = multicastMessagesQueue.take();
-            } catch (InterruptedException e){
-                Thread.currentThread().interrupt();
-                continue;
-            }
-            if(message == null) continue;
+        boolean running = true;
+            while (running) {
+                String message = null;
+                try {
+                    message = multicastMessagesQueue.take();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    running = false;
+                    continue;
+                }
+                if (message == null) continue;
 
-            ArrayList<String> parsedMessage = parseMessage(message);
-            //long id = Long.parseLong(parsedMessage.get(0));
-            //String url = parsedMessage.get(0);
-            switch(parsedMessage.get(0)){
-                case "FATHER_URLS":
-                    processFatherUrls(parsedMessage);
-                    break;
-                default:
-                    indexUrl(parsedMessage);
-                    break;
+                ArrayList<String> parsedMessage = parseMessage(message);
+                //long id = Long.parseLong(parsedMessage.get(0));
+                //String url = parsedMessage.get(0);
+                switch (parsedMessage.get(0)) {
+                    case "FATHER_URLS":
+                        processFatherUrls(parsedMessage);
+                        break;
+                    default:
+                        indexUrl(parsedMessage);
+                        break;
+                }
             }
-        }
     }
 
 
