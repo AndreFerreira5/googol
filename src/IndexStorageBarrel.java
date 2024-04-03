@@ -11,9 +11,10 @@ import java.util.regex.Pattern;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
-    private static AdaptiveRadixTree art = new AdaptiveRadixTree();
+    private static final AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
-    private static final String barrelRMIEndpoint = "//localhost/IndexStorageBarrel-" + uuid.toString();
+    private static final String host = "localhost";
+    private static final String barrelRMIEndpoint = "//" + host + "/IndexStorageBarrel-" + uuid.toString();
     private static String multicastAddress;
     private static final int HELPER_THREADS_NUM = 16;
     private static int port;
@@ -22,7 +23,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static final int retryDelay = 5;
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
-    private static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
+    private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
     protected static BlockingQueue<String> multicastMessagesQueue = new LinkedBlockingQueue<>();
     protected static ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
     protected static ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
