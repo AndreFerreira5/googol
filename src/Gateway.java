@@ -154,11 +154,6 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         return getRandomBarrel();
     }
 
-    @Override
-    public String getMostAvailableBarrelRemote() throws RemoteException {
-        return getMostAvailableBarrel();
-    }
-
 
     public static void countSearch(String search) {
         searchedStrings.put(search, searchedStrings.getOrDefault(search, 0) + 1);
@@ -192,7 +187,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
 
-    public void setBarrelAvailability(String barrelEndpoint, double availability) {
+    private static void setBarrelAvailability(String barrelEndpoint, double availability) {
         barrelMetricsMap.get(barrelEndpoint).setAvailability(availability);
     }
 
@@ -208,13 +203,27 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         String mostAvailableBarrel = null;
         double highestAvailability = 0.0;
         for(String barrel: barrelsOnline.values()){
-            if(barrelMetricsMap.get(barrel).getAvailability() > highestAvailability){
+            if(barrelMetricsMap.get(barrel).getAvailability() >= highestAvailability){
                 highestAvailability = barrelMetricsMap.get(barrel).getAvailability();
                 mostAvailableBarrel = barrel;
             }
         }
         return mostAvailableBarrel;
     }
+
+
+    private static void updateBarrelsAvailability(){
+        for(String barrelEndpoint: barrelsOnline.values()) {
+            IndexStorageBarrelRemote barrelRemote;
+            try {
+                barrelRemote = (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
+                setBarrelAvailability(barrelEndpoint, barrelRemote.getAvailability());
+            } catch (Exception e) {
+                System.out.println("Error looking up barrel: " + e.getMessage());
+            }
+        }
+    }
+
 
     private static void exportAllBarrels(){
         for(String barrelEndpoint: barrelsOnline.values()){
@@ -239,6 +248,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
     @Override
     public ArrayList<String> getSystemInfo(){
+        updateBarrelsAvailability();
+
         ArrayList<String> systemInfo = new ArrayList<>();
         systemInfo.add(getAverageResponseTimeByBarrel()); // average latency
         try{
@@ -258,15 +269,18 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException{
         countSearch(word);
+        updateBarrelsAvailability();
 
-        String randomBarrel = getMostAvailableBarrel();
-        if (randomBarrel == null) return null;
+        String bestBarrel = getMostAvailableBarrel();
+        System.out.println("CHOSEN BARREL: " + bestBarrel);
+        if (bestBarrel == null) return null;
 
         IndexStorageBarrelRemote barrel;
         try {
-            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(bestBarrel);
         } catch (Exception e) {
             System.out.println("Error looking up barrel: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
 
@@ -277,13 +291,14 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
         System.out.println("Elapsed time: " + elapsedTime / 1_000_000_000.0 + "s");
 
-        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
+        barrelMetricsMap.get(bestBarrel).updateMetrics(elapsedTime);
         return response;
     }
 
-    @Override
+    /*@Override
     public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException{
         countSearch(String.valueOf(words));
+        updateBarrelsAvailability();
 
         String randomBarrel = getMostAvailableBarrel();
         if (randomBarrel == null) return null;
@@ -303,19 +318,20 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
         barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
         return response;
-    }
+    }*/
 
 
     @Override
     public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException{
         countSearch(String.valueOf(words));
+        updateBarrelsAvailability();
 
-        String randomBarrel = getMostAvailableBarrel();
-        if (randomBarrel == null) return null;
+        String bestBarrel = getMostAvailableBarrel();
+        if (bestBarrel == null) return null;
 
         IndexStorageBarrelRemote barrel;
         try {
-            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(bestBarrel);
         } catch (Exception e) {
             System.out.println("Error looking up barrel: " + e.getMessage());
             return null;
@@ -326,7 +342,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         long end = System.nanoTime();
         double elapsedTime = end - start;
 
-        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
+        barrelMetricsMap.get(bestBarrel).updateMetrics(elapsedTime);
         return response;
     }
 
@@ -348,7 +364,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public static void main(String[] args) throws InterruptedException {
         if(!setupGatewayRMI()) System.exit(1);
 
-        int infoInterval = 2000;
+        int infoInterval = 5000;
         while(true){
             int barrelsNum = barrelsOnline.size();
             System.out.print("\033[H\033[2J");

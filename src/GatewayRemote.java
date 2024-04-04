@@ -22,10 +22,8 @@ public interface GatewayRemote extends Remote{
     ArrayList<String> getRegisteredBarrels() throws RemoteException;
     int getRegisteredBarrelsCount() throws RemoteException;
     String getRandomBarrelRemote() throws RemoteException;
-    String getMostAvailableBarrelRemote() throws RemoteException;
-    void setBarrelAvailability(String barrelEndpoint, double availability) throws RemoteException;
     ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException;
-    ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException;
+    //ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException;
     ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException;
     ArrayList<String> getSystemInfo() throws RemoteException;
 }

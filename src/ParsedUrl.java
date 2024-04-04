@@ -29,7 +29,7 @@ public class ParsedUrl implements Serializable {
     }
 
     public synchronized void addFatherUrl(long id){
-        this.fatherUrls.add(id);
+        if(!fatherUrls.contains(id)) this.fatherUrls.add(id);
     }
 
     public ArrayList<Long> getFatherUrls(){

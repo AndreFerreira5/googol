@@ -260,6 +260,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             } catch (InterruptedException ignored) {}
         }
         log("Reconnected!");
+
+        // register barrel again on the gateway
+        registerBarrel();
+        setupRMI();
     }
 
 
@@ -270,6 +274,28 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             System.out.println("Barrel exception: " + e.getMessage());
             return null;
         }
+    }
+
+
+    private static void registerBarrel(){
+        // register barrel in gateway
+        boolean registered = false;
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+            try {
+                gatewayRemote.registerBarrel(barrelRMIEndpoint);
+                rmiPort = gatewayRemote.getPort();
+                registered = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
+        }
+        if (!registered){
+            log("Error registering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
+            System.exit(1);
+        }
+        log("Successfully registered barrel in Gateway! RMI Endpoint: " + barrelRMIEndpoint);
     }
 
 
@@ -316,36 +342,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    private static void updateAvailability() {
+    @Override
+    public double getAvailability() {
         int totalThreads = fixedThreadPoolExecutor.getCorePoolSize();
-        while (true){
-            System.out.println("THREADS WAITING: " + waitingThreadsNum.get());
-            int busyThreads = fixedThreadPoolExecutor.getActiveCount();
-            int availableThreads = totalThreads - busyThreads + waitingThreadsNum.get();
-            double availability = (double) availableThreads / totalThreads;
-
-            System.out.println("total threads: " + totalThreads + " | busy threads: " + busyThreads + " | available threads: " + availableThreads + " | availability: " + availability);
-
-            // register barrel in gateway
-            boolean set = false;
-            for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
-                try {
-                    gatewayRemote.setBarrelAvailability(barrelRMIEndpoint, availability);
-                    set = true;
-                    break;
-                } catch (ConnectException e) {
-                    reconnectToGatewayRMI();
-                    i--;
-                } catch (RemoteException ignored) {
-                }
-            }
-            // ignore if failed
-
-            try {
-                Thread.sleep(availabilityUpdateDelay);
-            } catch (InterruptedException ignored) {}
-        }
+        int busyThreads = fixedThreadPoolExecutor.getActiveCount();
+        int availableThreads = totalThreads - busyThreads + waitingThreadsNum.get();
+        return (double) availableThreads / totalThreads;
     }
+
+
     public static void main(String[] args){
         log("UP!");
 
@@ -366,23 +371,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         log("Successfully connected to gateway!");
 
         // register barrel in gateway
-        boolean registered = false;
-        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
-            try {
-                gatewayRemote.registerBarrel(barrelRMIEndpoint);
-                rmiPort = gatewayRemote.getPort();
-                registered = true;
-                break;
-            } catch( ConnectException e){
-                reconnectToGatewayRMI();
-                i--;
-            } catch (RemoteException ignored){}
-        }
-        if (!registered){
-            log("Error registering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
-            System.exit(1);
-        }
-        log("Successfully registered barrel in Gateway! RMI Endpoint: " + barrelRMIEndpoint);
+        registerBarrel();
 
         // setup barrel RMI
         if(!setupRMI()){System.exit(1);}
@@ -400,9 +389,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         for(int i=0; i<HELPER_THREADS_NUM; i++){
             fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
-
-        // start thread responsible to update availability on the gateway
-        new Thread(IndexStorageBarrel::updateAvailability).start();
 
         try{
             while(true){

@@ -9,7 +9,8 @@ public interface IndexStorageBarrelRemote extends Remote{
     ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException;
     void exportBarrel() throws RemoteException;
     AdaptiveRadixTree getArt() throws RemoteException;
-    public ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> getParsedUrlsMap() throws RemoteException;
-    public ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap() throws RemoteException;
-    public ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap() throws RemoteException;
+    ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> getParsedUrlsMap() throws RemoteException;
+    ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap() throws RemoteException;
+    ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap() throws RemoteException;
+    double getAvailability() throws RemoteException;
 }
