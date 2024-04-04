@@ -13,4 +13,5 @@ public interface IndexStorageBarrelRemote extends Remote{
     ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap() throws RemoteException;
     ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap() throws RemoteException;
     double getAvailability() throws RemoteException;
+    ArrayList<ArrayList<String>> getFatherUrls(ArrayList<String> urls) throws RemoteException;
 }

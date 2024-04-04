@@ -4,6 +4,7 @@ import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
+import java.util.function.Supplier;
 
 public class Client {
     private static final int maxRetries = 5;
@@ -23,6 +24,32 @@ public class Client {
                                                             "Close client",
                                                             "Get system status"
                                                             };
+
+
+    public static <T> T callGatewayRMI(Supplier<T> action, String failureMessage) {
+        T result = null;
+        boolean success = false;
+
+        for(int i = 0; i < maxRetries; i++) {
+            try {
+                result = action.get();
+                success = true;
+                break;
+            } catch (ConnectException e) {
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored) {}
+        }
+
+        if(!success) {
+            System.out.println(failureMessage);
+            return null;
+        }
+
+        return result;
+    }
+
+
     private static GatewayRemote connectToGatewayRMI(){
         try {
             return (GatewayRemote) Naming.lookup("//localhost/GatewayService");
@@ -70,6 +97,10 @@ public class Client {
             String input  = scanner.nextLine();
             String[] splitInput = input.split("\\s+");
 
+            if(splitInput.length == 0){
+                System.out.println("Invalid command! Type \"help\" for available commands.");
+                continue;
+            }
 
             switch(splitInput[0]){
                 case "help":
@@ -171,6 +202,7 @@ public class Client {
                         final int pageSize = 10;
                         Scanner pageScanner = new Scanner(System.in);
                         boolean keepPaginating = true;
+                        boolean showFatherUrls = false;
 
                         while(keepPaginating){
                             int start = page * pageSize;
@@ -180,17 +212,62 @@ public class Client {
                             System.out.flush();
 
                             System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
-                            for(int i=start; i<end; i++){
-                                ArrayList<String> pageLine = response.get(i);
-                                System.out.println(pageLine.get(0) + " - " + pageLine.get(1) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                            if(showFatherUrls){
+                                ArrayList<String> pageLines = new ArrayList<>(); // array that contains the urls on the page
+                                ArrayList<ArrayList<String>> fatherUrls = new ArrayList<>(); // array that contains arrays that contains all the father urls of the urls on the page
+                                for(int i=start; i<end; i++){
+                                    pageLines.add(response.get(i).get(0));
+                                }
+
+                                boolean success = false;
+                                for(int i=0; i<maxRetries; i++){
+                                    try {
+                                        fatherUrls = gatewayRemote.getFatherUrls(pageLines);
+                                        success = true;
+                                        break;
+                                    } catch( ConnectException e){
+                                        reconnectToGatewayRMI();
+                                        i--;
+                                    } catch (RemoteException ignored){
+                                    }
+                                }
+                                if(!success || fatherUrls == null){
+                                    System.out.println("Error retrieving father urls!");
+                                    for(int i=start; i<end; i++){
+                                        ArrayList<String> pageLine = response.get(i);
+                                        System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                                    }
+                                }
+                                else{
+                                        System.out.println(fatherUrls);
+                                        for(int i=start; i<end; i++){
+                                            ArrayList<String> pageLine = response.get(i);
+                                            System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                                            System.out.println("Father URLs: ");
+                                            for(String fatherUrl : fatherUrls.get(i-start)){
+                                                System.out.println("\t" + fatherUrl);
+                                            }
+                                        }
+                                }
+
+                            } else {
+                                for(int i=start; i<end; i++){
+                                    ArrayList<String> pageLine = response.get(i);
+                                    System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                                }
                             }
 
+
                             if (start == 0) {
-                                System.out.print("\nexit - next >\n>");
+                                if(end == response.size()){
+                                    System.out.print("\nexit\n(f - toggle father urls)\n>");
+                                } else{
+                                    System.out.print("\nexit - next >\n(f - toggle father urls)\n>");
+                                }
                             } else if (end == response.size()){
-                                System.out.print("\n< prev - exit\n>");
+                                System.out.print("\n< prev - exit\n(f - toggle father urls)\n>");
                             } else {
-                                System.out.print("\n< prev - exit - next >\n>");
+                                System.out.print("\n< prev - exit - next >\n(f - toggle father urls)\n>");
                             }
 
                             String pageCommand = pageScanner.nextLine();
@@ -204,6 +281,9 @@ public class Client {
                                     if (page > 0) {
                                         page--;
                                     }
+                                    break;
+                                case "f":
+                                    showFatherUrls = !showFatherUrls;
                                     break;
                                 case "exit":
                                     keepPaginating = false;
@@ -241,8 +321,7 @@ public class Client {
                     System.exit(0);
                     break;
                 default:
-                    System.out.println("Invalid command: " + splitInput[0]);
-                    printAvailableCommands();
+                    System.out.println("Invalid command! Type \"help\" for available commands.");
                     break;
             }
         }

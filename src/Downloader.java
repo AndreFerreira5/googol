@@ -19,7 +19,7 @@ import java.net.MulticastSocket;
 
 import java.io.IOException;
 
-public class Downloader  extends Thread{
+public class Downloader{
     private static final UUID uuid = UUID.randomUUID();
     private static int crawlingMaxDepth;
     private static final int urlTimeout = 2000;
@@ -35,6 +35,7 @@ public class Downloader  extends Thread{
     private static void log(String text){
         System.out.println("[DOWNLOADER " + uuid.toString().substring(0, 8) + "] " + text);
     }
+
 
     private static ArrayList<String>[] parseRawUrl(RawUrl url){
         String link = url.url;
@@ -61,7 +62,7 @@ public class Downloader  extends Thread{
 
             for(Element subUrl : subUrls){
                 String href = subUrl.attr("abs:href");
-                // try to add url to deque depending on the crawling strategy
+                
                 fatherUrls.add(href + DELIMITER);
                 try{
                     RawUrl rawUrl = new RawUrl(href, depth+1);
@@ -304,6 +305,11 @@ public class Downloader  extends Thread{
     }
 
 
+    /**
+     * The entry point of application.
+     *
+     * @param args the input arguments
+     */
     public static void main(String[] args) {
         log("UP!");
 

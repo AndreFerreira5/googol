@@ -535,6 +535,37 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    @Override
+    public ArrayList<ArrayList<String>> getFatherUrls(ArrayList<String> urls) throws RemoteException {
+        ArrayList<ArrayList<String>> fatherUrls = new ArrayList<>();
+
+        for (String url : urls) {
+            if (!hasUrlBeenParsed(url)) continue;
+            ArrayList<String> fatherUrlList = new ArrayList<>();
+
+            ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(url);
+            if (urlIdPair == null) continue;
+            ParsedUrl parsedUrl = parsedUrlsMap.get(urlIdPair);
+            if (parsedUrl == null) continue;
+
+            ArrayList<Long> fartherUrlsIds = parsedUrl.getFatherUrls();
+
+            for (Long fatherUrlId : fartherUrlsIds) {
+                ParsedUrlIdPair fatherUrlIdPair = idToUrlKeyPairMap.get(fatherUrlId);
+                if (fatherUrlIdPair == null) continue;
+                ParsedUrl fatherUrl = parsedUrlsMap.get(fatherUrlIdPair);
+                if (fatherUrl == null) continue;
+
+                fatherUrlList.add(fatherUrl.url);
+            }
+
+            fatherUrls.add(fatherUrlList);
+        }
+
+        return fatherUrls;
+    }
+
+
     private static void messagesParser() {
         boolean running = true;
             while (running) {
