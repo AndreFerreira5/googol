@@ -1,4 +1,5 @@
 import java.io.*;
+import java.net.SocketException;
 import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
@@ -17,6 +18,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     public static final UUID uuid = UUID.randomUUID();
     private static final String host = "localhost";
     private static final String barrelRMIEndpoint = "//" + host + "/IndexStorageBarrel-" + uuid.toString();
+    private static MulticastSocket socket;
     private static String multicastAddress;
     private static final int HELPER_THREADS_NUM = 16;
     private static int port;
@@ -88,14 +90,21 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    private static String getMulticastMessage(MulticastSocket socket){
+    private static String getMulticastMessage(){
         //byte[] dataBuffer = new byte[messageSize];
         byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
         try{
             socket.receive(packet);
+        } catch (SocketException e) {
+            if (socket.isClosed()) {
+                log("Multicast socket is closed. " + e.getMessage());
+                throw new RuntimeException("Socket closed while receiving data.", e);
+            } else {
+                log("SocketException occurred, but socket is not closed. " + e.getMessage());
+            }
         } catch (IOException e){
-            log("Error receiving multicast message.");
+            log("Error receiving multicast message. " + e.getMessage());
             syncBarrel();
             return null;
         }
@@ -328,15 +337,24 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
         if(!unregistered) log("Error unregistering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
 
-        multicastMessagesQueue.clear();
+        System.out.println("multicast message qyueue as null");
+        multicastMessagesQueue = null;
+        System.out.println("socket as null");
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+        System.out.println("pool shutdown now");
         fixedThreadPool.shutdownNow();
         try {
             if (!fixedThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
                 System.err.println("Pool did not terminate");
             }
         } catch (InterruptedException ie) {
+            fixedThreadPool.shutdownNow();
             Thread.currentThread().interrupt();
         }
+
+        System.out.println("try completed");
 
         System.exit(1);
     }
@@ -382,7 +400,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }));
 
         // setup multicast connection
-        MulticastSocket socket = setupMulticastConn();
+        socket = setupMulticastConn();
         if(socket == null) return;
         log("Successfully joined multicast group!");
 
@@ -392,7 +410,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
         try{
             while(true){
-                String message = getMulticastMessage(socket);
+                String message = getMulticastMessage();
                 if (message == null) continue;
 
                 multicastMessagesQueue.add(message);
@@ -400,9 +418,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         } catch (Exception e){
             log("Error receiving message: " + e);
         } finally {
-            fixedThreadPool.shutdownNow();
-            exportART(art);
-            exit();
+            System.exit(1);
         }
 
     }
@@ -567,32 +583,30 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static void messagesParser() {
-        boolean running = true;
-            while (running) {
-                String message = null;
-                try {
-                    waitingThreadsNum.incrementAndGet();
-                    message = multicastMessagesQueue.take();
-                    waitingThreadsNum.decrementAndGet();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    running = false;
-                    continue;
-                }
-                if (message == null) continue;
-
-                ArrayList<String> parsedMessage = parseMessage(message);
-                //long id = Long.parseLong(parsedMessage.get(0));
-                //String url = parsedMessage.get(0);
-                switch (parsedMessage.get(0)) {
-                    case "FATHER_URLS":
-                        processFatherUrls(parsedMessage);
-                        break;
-                    default:
-                        indexUrl(parsedMessage);
-                        break;
-                }
+        while (!Thread.currentThread().isInterrupted()) {
+            String message = null;
+            try {
+                waitingThreadsNum.incrementAndGet();
+                message = multicastMessagesQueue.take();
+                waitingThreadsNum.decrementAndGet();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                continue;
             }
+            if (message == null) continue;
+
+            ArrayList<String> parsedMessage = parseMessage(message);
+            //long id = Long.parseLong(parsedMessage.get(0));
+            //String url = parsedMessage.get(0);
+            switch (parsedMessage.get(0)) {
+                case "FATHER_URLS":
+                    processFatherUrls(parsedMessage);
+                    break;
+                default:
+                    indexUrl(parsedMessage);
+                    break;
+            }
+        }
     }
 
 
