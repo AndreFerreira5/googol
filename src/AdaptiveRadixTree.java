@@ -1,12 +1,11 @@
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.nio.ByteOrder;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -906,6 +905,11 @@ public class AdaptiveRadixTree {
                         //System.out.print(keys[i] + " ");
                     }
                 }
+
+                /*
+                for(int i=0; i<256; i++) {
+                    buffer.put(keys[i]);
+                }*/
                 //System.out.println(" put keys");
                 break;
             case NODE256_TYPE:
@@ -941,12 +945,28 @@ public class AdaptiveRadixTree {
     }
 
 
+    public void importART(byte[] artInMem) throws IOException{
+        try{
+            DataInputStreamWithPointer artInputStream = new DataInputStreamWithPointer(artInMem);
+            long fileSize = artInMem.length;
+            ProgressTracker progressTracker = new ProgressTracker(fileSize);
+
+            Node rootNode = parseNode(artInputStream);
+            importNode(artInputStream, rootNode, progressTracker);
+
+            this.root = rootNode;
+        } catch (IOException e) {
+            throw new IOException(e);
+        }
+        System.out.println("TREE IMPORTED SUCCESSFULLY FROM FILE: " + this.filename);
+    }
+
+
     public void importART() throws IOException{
         try(RandomAccessFile artFile = new RandomAccessFile(this.filename, "rw")){
             long fileSize = artFile.length();
             ProgressTracker progressTracker = new ProgressTracker(fileSize);
 
-            //System.out.print(artFile.getFilePointer() + "|");
             Node rootNode = parseNode(artFile);
             importNode(artFile, rootNode, progressTracker);
 
@@ -1051,6 +1071,100 @@ public class AdaptiveRadixTree {
     }
 
 
+    private Node parseNode(DataInputStreamWithPointer artInputStream) throws IOException{
+        // int and long byte buffers to later get int and long values from the provided file
+        byte[] intBuffer = new byte[Integer.BYTES];
+        byte[] longBuffer = new byte[Long.BYTES];
+
+        // get nodeType from file
+        artInputStream.readFully(intBuffer);
+        int nodeType = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        //System.out.println("read node type: " + nodeType);
+
+        // create node based on the nodeType
+        Node node = switch (nodeType) {
+            case NODE4_TYPE -> new Node4();
+            case NODE16_TYPE -> new Node16();
+            case NODE48_TYPE -> new Node48();
+            case NODE256_TYPE -> new Node256();
+            default -> throw new IllegalStateException("Unexpected node type: " + nodeType);
+        };
+
+        // get childrenNum from file
+        artInputStream.readFully(intBuffer);
+        int childrenNum = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        //System.out.println("read children num: " + childrenNum);
+
+        // get isFinalWord from file
+        byte isFinalWord = artInputStream.readByte();
+        //System.out.println("read isfinalword: " + isFinalWord);
+
+        // get indicesNum from file
+        artInputStream.readFully(intBuffer);
+        int indicesNum = ByteBuffer.wrap(intBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        //System.out.println("read indices num: " + indicesNum);
+
+        // get linkIndices from file
+        ArrayList<Long> linkIndices = new ArrayList<>();
+        for(int i=0; i<indicesNum; i++){
+            artInputStream.readFully(longBuffer);
+            linkIndices.add(ByteBuffer.wrap(longBuffer).order(ByteOrder.LITTLE_ENDIAN).getLong());
+            //System.out.print(linkIndices.get(i) + " ");
+        }
+        //System.out.println(" - read indices: " + linkIndices);
+
+
+        switch(nodeType){
+            case NODE4_TYPE:
+            case NODE16_TYPE:
+                // read all keys from file
+                byte[] keys = new byte[childrenNum];
+                artInputStream.readFully(keys);
+                //System.out.println("read node4/16 keys: " + Arrays.toString(keys));
+                for (byte key : keys) {
+                    node.insert(key);
+                }
+                break;
+            case NODE48_TYPE:
+                byte[] keyIndex = node.getKeys();
+
+                //System.out.println("going node 48 keys");
+                for (int i = 0; i < childrenNum; i++) {
+                    byte key = artInputStream.readByte();
+                    //System.out.print(key+"|");
+                    byte childIndex = artInputStream.readByte();
+                    //System.out.print(childIndex + " ");
+                    keyIndex[Byte.toUnsignedInt(key)] = childIndex;
+                }
+                node.setKeys(keyIndex);
+                node.setCount(childrenNum);
+
+                break;
+            case NODE256_TYPE:
+                //System.out.println("going node 256 keys");
+                for (int i = 0; i < childrenNum; i++) {
+                    byte childKey = artInputStream.readByte();
+                    //System.out.print(childKey + " ");
+                    node.insert(childKey);
+                }
+                break;
+        }
+
+
+        // assign values to the node
+        node.setLinkIndices(linkIndices);
+        //node.linkIndices = linkIndices;
+        node.setIsFinalWord(isFinalWord != 0);
+        //node.isFinalWord = isFinalWord != 0;
+
+        //System.out.println();
+        //System.out.println("node parsed!");
+        //System.out.print(artFile.getFilePointer() + "|");
+        return node;
+    }
+
+
+
     /* Recursive function that de-serializes all the nodes in the provided file, building the tree recursively from the left side to the right side*/
     private void importNode(RandomAccessFile artFile, Node parsedNode, ProgressTracker progressTracker) throws IOException {
         if (parsedNode == null) return; // if for some reason the provided node is null, return
@@ -1090,7 +1204,57 @@ public class AdaptiveRadixTree {
                 }
             }
         } else if(parsedNode instanceof Node256){
-            Arrays.sort(parsedNodeKeys);
+            //Arrays.sort(parsedNodeKeys);
+            for (int i=0; i<parsedNodeCount; i++){
+                parsedNode.insert(parsedNodeKeys[i], parsedNodeChildren[i]);
+            }
+        } else {
+            for (int i=0; i<parsedNodeCount; i++){
+                parsedNode.insert(parsedNodeKeys[i], parsedNodeChildren[i]);
+            }
+        }
+
+    }
+
+
+    private void importNode(DataInputStreamWithPointer artInputStream, Node parsedNode, ProgressTracker progressTracker) throws IOException {
+        if (parsedNode == null) return; // if for some reason the provided node is null, return
+
+        // get the children of the parsed node to parse them
+        Node[] parsedNodeChildren = parsedNode.getChildren();
+        // get the keys of the parsed node
+        byte[] parsedNodeKeys = parsedNode.getKeys();
+        // get the number of children of the parsed node
+        int parsedNodeCount = parsedNode.getCount();
+
+        // iterate over the children of the parsed node
+        for(int i=0; i<parsedNodeCount; i++){
+            Node parsedChildNode = parseNode(artInputStream); // parse node
+            parsedNodeChildren[i] = parsedChildNode; // assign the parsed child node to the children array
+
+            progressTracker.updateProcessedBytes(artInputStream.getBytesRead());
+
+            int parsedChildNodeCount = parsedChildNode.getCount();
+            if(parsedChildNodeCount > 0){ // if the child node has children, import them
+                importNode(artInputStream, parsedChildNode, progressTracker);
+            }
+        }
+
+        if (parsedNode instanceof Node48){
+            for(int i=0; i<parsedNodeCount; i++){
+                byte key = -1;
+                for(int j=0; j<parsedNodeKeys.length; j++){
+                    if(parsedNodeKeys[j] == i){
+                        key = (byte) j;
+                        break;
+                    }
+                }
+
+                if(key != -1){
+                    parsedNode.insert(key, parsedNodeChildren[i]);
+                }
+            }
+        } else if(parsedNode instanceof Node256){
             for (int i=0; i<parsedNodeCount; i++){
                 parsedNode.insert(parsedNodeKeys[i], parsedNodeChildren[i]);
             }
@@ -1104,6 +1268,10 @@ public class AdaptiveRadixTree {
 
     public void setFilename(String filename){
         this.filename = filename;
+    }
+
+    public String getFilename(){
+        return this.filename;
     }
 }
 
@@ -1137,7 +1305,6 @@ class ProgressTracker {
     private void updateProgress(int currentPercentage) {
         if (currentPercentage != lastPrintedPercentage) {
             int progress = (currentPercentage * barWidth) / 100;
-            //System.out.print("\rProgress: " + currentPercentage + "%");
             String filledPart = "-".repeat(progress);
             String pointer = (progress < barWidth) ? ">" : ""; // add > only if there is a space
             String emptyPart = " ".repeat(Math.max(barWidth - progress - pointer.length(), 0));
@@ -1147,5 +1314,42 @@ class ProgressTracker {
             lastPrintedPercentage = currentPercentage;
             if(lastPrintedPercentage == 100) System.out.println();
         }
+    }
+
+    public long getProcessedBytes() {
+        return processedBytes;
+    }
+
+    public int getProcessedNodes() {
+        return processedNodes;
+    }
+}
+
+
+
+class DataInputStreamWithPointer {
+    private final DataInputStream dataInputStream;
+    private long bytesRead = 0;
+
+    public DataInputStreamWithPointer(byte[] data) {
+        this.dataInputStream = new DataInputStream(new ByteArrayInputStream(data));
+    }
+
+    public byte readByte() throws IOException {
+        bytesRead++;
+        return dataInputStream.readByte();
+    }
+
+    public void readFully(byte[] b) throws IOException {
+        bytesRead += b.length;
+        dataInputStream.readFully(b);
+    }
+
+    public long getBytesRead() {
+        return bytesRead;
+    }
+
+    public void close() throws IOException {
+        dataInputStream.close();
     }
 }

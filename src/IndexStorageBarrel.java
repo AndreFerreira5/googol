@@ -1,5 +1,7 @@
 import java.io.*;
 import java.net.SocketException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
@@ -25,7 +27,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
     private static final int retryDelay = 1000; // 1 second
-    private static final int availabilityUpdateDelay = 1000; // 1 second
+    private static final int exportationDelay = 60000; // 60 seconds
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
     private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
@@ -40,12 +42,11 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static String getRandomBarrelFromGateway(){
-        // unregister barrel in gateway
         String randomBarrel = "";
         boolean got = false;
         for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
             try {
-                gatewayRemote.getRandomBarrelRemote();
+                randomBarrel = gatewayRemote.getRandomBarrelRemote();
                 got = true;
                 break;
             } catch( ConnectException e){
@@ -58,35 +59,67 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    private static void syncBarrel(){
-        String randomBarrel = "";
-        while(randomBarrel.isEmpty() || randomBarrel.equals(barrelRMIEndpoint)){
-            randomBarrel = getRandomBarrelFromGateway();
+    private static String getMostAvailableBarrelFromGateway(){
+        String bestBarrel = "";
+        boolean got = false;
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+            try {
+                bestBarrel = gatewayRemote.getMostAvailableBarrelRemote(barrelRMIEndpoint);
+                got = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
         }
 
-        IndexStorageBarrelRemote barrel = connectToBarrelRMI(randomBarrel);
-        if (barrel == null) return;
+        return bestBarrel;
+    }
 
-        log("Syncing Barrel with " + randomBarrel);
 
-        // unregister barrel in gateway
+    private static boolean syncBarrel(){
+        String referenceBarrel = "";
+
+        referenceBarrel = getMostAvailableBarrelFromGateway();
+        System.out.println(referenceBarrel);
+        if(referenceBarrel == null || referenceBarrel.isEmpty() || referenceBarrel.equals(barrelRMIEndpoint)) return false;
+
+        IndexStorageBarrelRemote barrel = connectToBarrelRMI(referenceBarrel);
+        if (barrel == null) return false;
+
+        log("Syncing Barrel with " + referenceBarrel);
+
         boolean synced = false;
         for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
             try {
-                AdaptiveRadixTree barrelART = barrel.getArt();
+                // get the new art and maps
+                byte[] barrelARTFile = barrel.getArt();
                 ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> barrelParsedUrlsMap = barrel.getParsedUrlsMap();
                 ConcurrentHashMap<String, ParsedUrlIdPair> barrelUrlToUrlKeyPairMap = barrel.getUrlToUrlKeyPairMap();
                 ConcurrentHashMap<Long, ParsedUrlIdPair> barrelIdToUrlKeyPairMap = barrel.getIdToUrlKeyPairMap();
-                art = barrelART;
+
+                // assign the new art and maps
+                art.importART(barrelARTFile);
                 parsedUrlsMap = barrelParsedUrlsMap;
                 urlToUrlKeyPairMap = barrelUrlToUrlKeyPairMap;
                 idToUrlKeyPairMap = barrelIdToUrlKeyPairMap;
+
                 synced = true;
                 break;
-            } catch (RemoteException ignored){}
+            } catch (RemoteException e){
+                log(e.getMessage());
+            } catch (IOException e){
+                log(e.getMessage());
+                break;
+            }
         }
-        if(!synced) log("Error syncing ART! Proceeding with current ART.");
-        else log("Barrel synced successfully!");
+        if(!synced){
+            log("Error syncing Barrel!.");
+            return false;
+        }
+
+        log("Barrel synced successfully!");
+        return true;
     }
 
 
@@ -173,22 +206,35 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     @Override
-    public AdaptiveRadixTree getArt(){
-        return art;
+    public byte[] getArt(){
+        try {
+            art.exportART();
+        } catch (IOException e) {
+            return null;
+        }
+
+        try{
+            return Files.readAllBytes(Paths.get(art.getFilename()));
+        } catch (Exception e){
+            return null;
+        }
     }
 
     @Override
     public ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> getParsedUrlsMap(){
+        System.out.println(parsedUrlsMap.size());
         return parsedUrlsMap;
     }
 
     @Override
     public ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap(){
+        System.out.println(urlToUrlKeyPairMap.size());
         return urlToUrlKeyPairMap;
     }
 
     @Override
     public ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap(){
+        System.out.println(idToUrlKeyPairMap.size());
         return idToUrlKeyPairMap;
     }
 
@@ -234,7 +280,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
 
-    private void exportDeserializedInfo(){
+    private static void exportDeserializedInfo(){
         log("Exporting Parsed Urls Hash Map...");
         serializeMap(parsedUrlsMap, "parsedUrlsMap.ser");
         log("Exporting Urls to Url Key Pairs Hash Map...");
@@ -369,13 +415,22 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    private static void periodicBarrelExportation(){
+        while(!Thread.currentThread().isInterrupted()){
+            try {
+                Thread.sleep(exportationDelay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            log("Periodic barrel exportation starting...");
+            exportDeserializedInfo();
+        }
+    }
+
+
     public static void main(String[] args){
         log("UP!");
-
-        //art.setFilename("barrel-" + uuid.toString() + ".art"); // give each barrel its unique art file
-
-        if(importSerializedInfo()) log("Successfully imported serialized info!");
-        else log("Failed to import serialized info...");
 
         // setup gateway RMI
         gatewayRemote = null;
@@ -387,6 +442,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             } catch (InterruptedException ignored) {}
         }
         log("Successfully connected to gateway!");
+
+
+        // try to sync barrel with another one, if it exists
+        // if not successful, try to import serialized info
+        if(!syncBarrel()){
+            log("Couldn't sync barrel with another one. Trying to import serialized info...");
+            if(importSerializedInfo()) log("Successfully imported serialized info!");
+            else log("Failed to import serialized info...");
+        }
 
         // register barrel in gateway
         registerBarrel();
@@ -407,6 +471,8 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         for(int i=0; i<HELPER_THREADS_NUM; i++){
             fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
+
+        new Thread(IndexStorageBarrel::periodicBarrelExportation).start();
 
         try{
             while(true){

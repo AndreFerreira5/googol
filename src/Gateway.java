@@ -33,7 +33,7 @@ class BarrelMetrics {
 
 public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     private static final int rmiPort = 1099;
-    public static final int CRAWLING_MAX_DEPTH = 2;
+    public static final int CRAWLING_MAX_DEPTH = 1;
     public static final CrawlingStrategy crawlingStrategy = new BFSStartegy();
     public static AtomicLong PARSED_URLS = new AtomicLong();
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
@@ -154,6 +154,16 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         return getRandomBarrel();
     }
 
+    @Override
+    public String getMostAvailableBarrelRemote(String callingBarrel){
+        return getMostAvailableBarrel(callingBarrel);
+    }
+
+    @Override
+    public String getMostAvailableBarrelRemote(){
+        return getMostAvailableBarrel();
+    }
+
 
     public static void countSearch(String search) {
         searchedStrings.put(search, searchedStrings.getOrDefault(search, 0) + 1);
@@ -203,6 +213,20 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         String mostAvailableBarrel = null;
         double highestAvailability = 0.0;
         for(String barrel: barrelsOnline.values()){
+            if(barrelMetricsMap.get(barrel).getAvailability() >= highestAvailability){
+                highestAvailability = barrelMetricsMap.get(barrel).getAvailability();
+                mostAvailableBarrel = barrel;
+            }
+        }
+        return mostAvailableBarrel;
+    }
+
+
+    private static String getMostAvailableBarrel(String excludedBarrel){
+        String mostAvailableBarrel = null;
+        double highestAvailability = 0.0;
+        for(String barrel: barrelsOnline.values()){
+            if(barrel.equals(excludedBarrel)) continue;
             if(barrelMetricsMap.get(barrel).getAvailability() >= highestAvailability){
                 highestAvailability = barrelMetricsMap.get(barrel).getAvailability();
                 mostAvailableBarrel = barrel;
@@ -286,6 +310,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
         long start = System.nanoTime();
         ArrayList<ArrayList<String>> response = barrel.searchWord(word);
+        System.out.println("RESPONSE!!!!!!!!!!! " + response);
         long end = System.nanoTime();
         double elapsedTime = end - start;
 

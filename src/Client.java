@@ -245,11 +245,13 @@ public class Client {
 
                 String pageCommand = pageScanner.nextLine();
                 switch (pageCommand) {
+                    case "n":
                     case "next":
                         if (end < response.size()) {
                             page++;
                         }
                         break;
+                    case "p":
                     case "prev":
                         if (page > 0) {
                             page--;
@@ -258,6 +260,7 @@ public class Client {
                     case "f":
                         showFatherUrls = !showFatherUrls;
                         break;
+                    case "e":
                     case "exit":
                         keepPaginating = false;
                         break;

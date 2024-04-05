@@ -112,10 +112,6 @@ public class Downloader{
         for(String word : text.replaceAll("\\p{Punct}", " ").trim().split("\\s+")){
             if(wordsSet.add(word + DELIMITER))
                 buffer.add(word + DELIMITER);
-            /*if (!wordsSet.contains(word)) {
-                buffer.add(word + DELIMITER);
-                wordsSet.add(word); // add the word to the hashset to track uniqueness
-            }*/
         }
 
         return buffer;
@@ -154,7 +150,6 @@ public class Downloader{
 
 
     private static void transmitUrlInfoToBarrels(ArrayList<String> buffer, MulticastSocket socket) {
-        System.out.println(buffer);
         // 65535bytes ip packet - 20bytes ip header - 8bytes udp header
         final int MAX_PACKET_SIZE = 65507;
 
