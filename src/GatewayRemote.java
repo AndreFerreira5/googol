@@ -29,5 +29,5 @@ public interface GatewayRemote extends Remote{
     ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException;
     ArrayList<String> getSystemInfo() throws RemoteException;
     ArrayList<ArrayList<String>> getFatherUrls(ArrayList<String> urls) throws RemoteException;
-    //ArrayList<String> getFatherUrls(String url) throws RemoteException;
+    ArrayList<String> getFatherUrls(String url) throws RemoteException;
 }

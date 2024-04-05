@@ -387,9 +387,25 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             return null;
         }
 
-        ArrayList<ArrayList<String>> response = barrel.getFatherUrls(urls);
+        return barrel.getFatherUrls(urls);
+    }
 
-        return response;
+    @Override
+    public ArrayList<String> getFatherUrls(String url) throws RemoteException {
+        updateBarrelsAvailability();
+
+        String bestBarrel = getMostAvailableBarrel();
+        if (bestBarrel == null) return null;
+
+        IndexStorageBarrelRemote barrel;
+        try {
+            barrel = (IndexStorageBarrelRemote) Naming.lookup(bestBarrel);
+        } catch (Exception e) {
+            System.out.println("Error looking up barrel: " + e.getMessage());
+            return null;
+        }
+
+        return barrel.getFatherUrls(url);
     }
 
 

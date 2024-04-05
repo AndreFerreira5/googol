@@ -124,7 +124,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
 
     private static String getMulticastMessage(){
-        //byte[] dataBuffer = new byte[messageSize];
         byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
         try{
@@ -383,24 +382,20 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
         if(!unregistered) log("Error unregistering barrel in Gateway! (" + maxRetries + " retries failed) Exiting...");
 
-        System.out.println("multicast message qyueue as null");
         multicastMessagesQueue = null;
-        System.out.println("socket as null");
         if (socket != null && !socket.isClosed()) {
             socket.close();
         }
-        System.out.println("pool shutdown now");
+
         fixedThreadPool.shutdownNow();
         try {
-            if (!fixedThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.err.println("Pool did not terminate");
+            if (!fixedThreadPool.awaitTermination(500, TimeUnit.MICROSECONDS)) {
+                fixedThreadPool.shutdownNow();
             }
         } catch (InterruptedException ie) {
             fixedThreadPool.shutdownNow();
             Thread.currentThread().interrupt();
         }
-
-        System.out.println("try completed");
 
         System.exit(1);
     }
@@ -469,13 +464,13 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         log("Successfully joined multicast group!");
 
         for(int i=0; i<HELPER_THREADS_NUM; i++){
-            fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
+            //fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
 
         new Thread(IndexStorageBarrel::periodicBarrelExportation).start();
 
         try{
-            while(true){
+            while(!Thread.currentThread().isInterrupted()){
                 String message = getMulticastMessage();
                 if (message == null) continue;
 
@@ -648,6 +643,31 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    @Override
+    public ArrayList<String> getFatherUrls(String url) throws RemoteException {
+        if(!hasUrlBeenParsed(url)) return null;
+
+        ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(url);
+        if (urlIdPair == null) return null;
+        ParsedUrl parsedUrl = parsedUrlsMap.get(urlIdPair);
+        if (parsedUrl == null) return null;
+
+        ArrayList<Long> fartherUrlsIds = parsedUrl.getFatherUrls();
+        ArrayList<String> fatherUrls = new ArrayList<>();
+
+        for (Long fatherUrlId : fartherUrlsIds) {
+            ParsedUrlIdPair fatherUrlIdPair = idToUrlKeyPairMap.get(fatherUrlId);
+            if (fatherUrlIdPair == null) continue;
+            ParsedUrl fatherUrl = parsedUrlsMap.get(fatherUrlIdPair);
+            if (fatherUrl == null) continue;
+
+            fatherUrls.add(fatherUrl.url);
+        }
+
+        return fatherUrls;
+    }
+
+
     private static void messagesParser() {
         while (!Thread.currentThread().isInterrupted()) {
             String message = null;
@@ -657,7 +677,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 waitingThreadsNum.decrementAndGet();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                continue;
+                break;
             }
             if (message == null) continue;
 
@@ -723,29 +743,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
 
         return sortedResults;
-    }
-
-    @Override
-    public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words){
-        if(words == null) return null;
-        ArrayList<ArrayList<String>> results = new ArrayList<>();
-
-        for(String word : words){
-            ArrayList<Long> linkIndices = getLinkIndices(word);
-            if(linkIndices == null || linkIndices.isEmpty()) continue;
-            for(long linkIndex : linkIndices){
-                ArrayList<String> result = new ArrayList<>();
-                ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
-                ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
-                result.add(parsedUrl.url);
-                result.add(parsedUrl.title);
-                result.add(parsedUrl.description);
-
-                results.add(result);
-            }
-        }
-
-        return results;
     }
 
 

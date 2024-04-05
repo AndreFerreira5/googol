@@ -5,7 +5,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public interface IndexStorageBarrelRemote extends Remote{
     ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException;
-    ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException;
     ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException;
     void exportBarrel() throws RemoteException;
     byte[] getArt() throws RemoteException;
@@ -14,4 +13,5 @@ public interface IndexStorageBarrelRemote extends Remote{
     ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap() throws RemoteException;
     double getAvailability() throws RemoteException;
     ArrayList<ArrayList<String>> getFatherUrls(ArrayList<String> urls) throws RemoteException;
+    ArrayList<String> getFatherUrls(String urls) throws RemoteException;
 }

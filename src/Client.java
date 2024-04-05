@@ -14,6 +14,7 @@ public class Client {
                                                         "clear",
                                                         "index",
                                                         "search",
+                                                        "fathers",
                                                         "exit",
                                                         "status"
                                                         };
@@ -21,6 +22,7 @@ public class Client {
                                                             "Clear screen",
                                                             "Index a provided Url (i.e \"index https://example.com\")",
                                                             "Search Urls by word(s) (i.e \"search word1 word2\")",
+                                                            "Get father urls of the provided url (i.e \"fathers https://example.com\")",
                                                             "Close client",
                                                             "Get system status"
                                                             };
@@ -273,6 +275,32 @@ public class Client {
     }
 
 
+    private static void fatherUrls(String url){
+        ArrayList<String> fatherUrls = null;
+        boolean success = false;
+        for(int i=0; i<maxRetries; i++){
+            try {
+                fatherUrls = gatewayRemote.getFatherUrls(url);
+                success = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
+        }
+        if(!success) System.out.println("Error getting father urls!");
+        else{
+            if(fatherUrls == null) {
+                System.out.println("No father urls found!");
+                return;
+            }
+
+            System.out.println("-----" + url + " FATHER URLS-----");
+            for(String father : fatherUrls){
+                System.out.println(father);
+            }
+        }
+    }
     private static void getSystemStatus(){
         ArrayList<String> status = null;
         boolean success = false;
@@ -294,6 +322,8 @@ public class Client {
             }
         }
     }
+
+
     public static void main(String[] args){
         Scanner scanner = new Scanner(System.in);
 
@@ -328,6 +358,9 @@ public class Client {
                     break;
                 case "search":
                     searchWords(splitInput);
+                    break;
+                case "fathers":
+                    fatherUrls(splitInput[1]);
                     break;
                 case "status":
                     getSystemStatus();
