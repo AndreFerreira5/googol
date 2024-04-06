@@ -52,15 +52,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     private static String barrelRMIEndpoint;
     private static MulticastSocket socket;
     private static String multicastAddress;
-    private static final int HELPER_THREADS_NUM = 16;
+    private static int helperThreadsNum = 16; // default 16 threads
     private static int port;
-    protected static final int maxRetries = 5;
-    private static final int retryDelay = 1000; // 1 second
-    private static final int exportationDelay = 60000; // 60 seconds
+    protected static int maxRetries = 5; // default 5 retries
+    private static int retryDelay = 1000; // default 1 second
+    private static int exportationDelay = 60000; // default 60 seconds
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
     private static String gatewayEndpoint;
-    private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
+    private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(helperThreadsNum);
     private static final ThreadPoolExecutor fixedThreadPoolExecutor = (ThreadPoolExecutor) fixedThreadPool;
     protected static final AtomicInteger waitingThreadsNum = new AtomicInteger(0);
     protected static BlockingQueue<String> multicastMessagesQueue = new LinkedBlockingQueue<>();
@@ -69,24 +69,6 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     protected static ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap = new ConcurrentHashMap<>();
 
     protected IndexStorageBarrel() throws RemoteException {}
-
-
-    private static String getRandomBarrelFromGateway(){
-        String randomBarrel = "";
-        boolean got = false;
-        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
-            try {
-                randomBarrel = gatewayRemote.getRandomBarrelRemote();
-                got = true;
-                break;
-            } catch( ConnectException e){
-                reconnectToGatewayRMI();
-                i--;
-            } catch (RemoteException ignored){}
-        }
-
-        return randomBarrel;
-    }
 
 
     private static String getMostAvailableBarrelFromGateway(){
@@ -101,6 +83,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 reconnectToGatewayRMI();
                 i--;
             } catch (RemoteException ignored){}
+        }
+        if(!got){
+            log("Couldn't get most available barrel from gateway!");
+            return null;
         }
 
         return bestBarrel;
@@ -322,6 +308,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
     private static GatewayRemote connectToGatewayRMI(){
         try {
+            System.out.println(gatewayEndpoint);
             GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
             DELIMITER = gateway.getDelimiter();
             multicastAddress = gateway.getMulticastAddress();
@@ -454,36 +441,93 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-    public static void main(String[] args){
-        log("UP!");
-
+    private static void loadConfig(){
         try{
+            // load gateway rmi host
             String gatewayHost = BarrelConfigLoader.getProperty("gateway.host");
             if(gatewayHost == null){
                 System.err.println("Gateway Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+
+            // load gateway rmi service name
             String gatewayServiceName = BarrelConfigLoader.getProperty("gateway.serviceName");
             if(gatewayServiceName == null){
                 System.err.println("Gateway Service Name property not found in property file! Exiting...");
                 System.exit(1);
             }
 
+            // build gateway rmi endpoint
             gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
 
+            // load barrel host
             String barrelHost = BarrelConfigLoader.getProperty("barrel.host");
             if(barrelHost == null){
                 System.err.println("Barrel Host property not found in property file! Exiting...");
                 System.exit(1);
             }
 
+            // build barrel rmi endpoint with its uuid
             barrelRMIEndpoint = "//"+barrelHost+"/IndexStorageBarrel-"+uuid.toString();
+
+            // load helper threads num
+            String helperThreads = BarrelConfigLoader.getProperty("barrel.helperThreads");
+            if(helperThreads == null){ // if not found, set to default (defined on top of the class)
+                System.out.println("Barrel Helper Threads property not found in property file! Defaulting to " + helperThreadsNum +"...");
+            } else { // if found, check it
+                int helperThreadsInt = Integer.parseInt(helperThreads);
+                if(helperThreadsInt > 0) // if number of threads is valid
+                    helperThreadsNum = helperThreadsInt;
+                else // if number of threads is not valid, set to default (defined on top of the class)
+                    System.out.println("Barrel Helper Threads Num cannot be lower or equal to 0! Defaulting to " + helperThreadsNum +"...");
+            }
+
+            // load max retires num
+            String  maxRetriesConfig = BarrelConfigLoader.getProperty("barrel.maxRetries");
+            if(maxRetriesConfig == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Barrel Max Retries property not found in property file! Defaulting to " + maxRetries + "...");
+            } else { // if found, check it
+                int maxRetriesInt = Integer.parseInt(maxRetriesConfig);
+                if(maxRetriesInt > 0) // if max number of retries is valid
+                    maxRetries = maxRetriesInt;
+                else // if max number of retries is not valid, set it to default (defined on top of the class)
+                    System.out.println("Barrel Max Retries cannot be lower or equal to 0! Defaulting to " + maxRetries +"...");
+            }
+
+            // load retry delay
+            String retryDelayProperty = BarrelConfigLoader.getProperty("barrel.retryDelay");
+            if(retryDelayProperty == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Barrel Retry Delay property not found in property file! Defaulting to " + retryDelay + "...");
+            } else { // if found, check it
+                int retryDelayInt = Integer.parseInt(retryDelayProperty);
+                if(retryDelayInt > 0) // if retry delay is valid
+                    retryDelay = retryDelayInt;
+                else // if retry delay is not valid, set it to default (defined on top of the class)
+                    System.out.println("Barrel Retry Delay cannot be lower or equal to 0! Defaulting to " + retryDelay +"...");
+            }
+
+            // load exportation delay
+            String exportationDelayProperty = BarrelConfigLoader.getProperty("barrel.exportationDelay");
+            if(exportationDelayProperty == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Barrel Exportation Delay property not found in property file! Defaulting to " + exportationDelay + "...");
+            } else { // if found, check it
+                int exportationDelayInt = Integer.parseInt(exportationDelayProperty);
+                if(exportationDelayInt > 10000) // if exportation delay is valid
+                    exportationDelay = exportationDelayInt;
+                else // if exportation delay is not valid, set it to default (defined on top of the class)
+                    System.out.println("Barrel Exportation Delay cannot be lower or equal to 10000 (10 seconds)! Defaulting to " + exportationDelay + "...");
+            }
         } catch (BarrelConfigLoader.ConfigurationException e) {
             System.err.println("Failed to load configuration file: " + e.getMessage());
             System.err.println("Exiting...");
         }
+    }
+    public static void main(String[] args){
+        log("UP!");
 
-            // setup gateway RMI
+        loadConfig();
+
+        // setup gateway RMI
         gatewayRemote = null;
         log("Connecting to gateway...");
         while(gatewayRemote == null){
@@ -519,7 +563,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         if(socket == null) return;
         log("Successfully joined multicast group!");
 
-        for(int i=0; i<HELPER_THREADS_NUM; i++){
+        for(int i=0; i<helperThreadsNum; i++){
             fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
 

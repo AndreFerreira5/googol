@@ -324,7 +324,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word, int page, int pageSize, boolean isFreshSearch) throws RemoteException{
-        if(isFreshSearch) countSearch(word);
+        if(isFreshSearch) countSearch(word); // if the call is from a search and not from a page change, count it as a search
         updateBarrelsAvailability();
 
         String bestBarrel = getMostAvailableBarrel();
@@ -352,35 +352,10 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         return response;
     }
 
-    /*@Override
-    public ArrayList<ArrayList<String>> searchWords(ArrayList<String> words) throws RemoteException{
-        countSearch(String.valueOf(words));
-        updateBarrelsAvailability();
-
-        String randomBarrel = getMostAvailableBarrel();
-        if (randomBarrel == null) return null;
-
-        IndexStorageBarrelRemote barrel;
-        try {
-            barrel = (IndexStorageBarrelRemote) Naming.lookup(randomBarrel);
-        } catch (Exception e) {
-            System.out.println("Error looking up barrel: " + e.getMessage());
-            return null;
-        }
-
-        long start = System.nanoTime();
-        ArrayList<ArrayList<String>> response = barrel.searchWords(words);
-        long end = System.nanoTime();
-        double elapsedTime = end - start;
-
-        barrelMetricsMap.get(randomBarrel).updateMetrics(elapsedTime);
-        return response;
-    }*/
-
 
     @Override
     public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words, int page, int pageSize, boolean isFreshSearch) throws RemoteException{
-        if(isFreshSearch) countSearch(String.valueOf(words));
+        if(isFreshSearch) countSearch(String.valueOf(words)); // if the call is from a search and not from a page change, count it as a search
         updateBarrelsAvailability();
 
         String bestBarrel = getMostAvailableBarrel();

@@ -175,60 +175,36 @@ public class Client {
 
 
     private static void searchWords(String[] providedWords){
+        // state flags
         boolean isFreshSearch = true;
-        ArrayList<ArrayList<String>> response;
-        /*
-        if(providedWords.length > 2){ // when searching more than one word
-            ArrayList<String> words = new ArrayList<>(Arrays.asList(providedWords).subList(1, providedWords.length));
+        boolean didPageChange = true;
+        boolean keepPaginating = true;
+        boolean showFatherUrls = false;
 
-            boolean added = false;
-            for(int i=0; i<maxRetries; i++){
-                try {
-                    response = gatewayRemote.searchWordSet(words);
-                    added = true;
-                    break;
-                } catch( ConnectException e){
-                    reconnectToGatewayRMI();
-                    i--;
-                } catch (RemoteException ignored){}
-            }
-            if(!added) System.out.println("Error searching!");
-        } else if (providedWords.length == 2){ // when searching only one word
-            boolean added = false;
-            for(int i=0; i<maxRetries; i++){
-                try {
-                    response = gatewayRemote.searchWord(providedWords[1]);
-                    added = true;
-                    break;
-                } catch( ConnectException e){
-                    reconnectToGatewayRMI();
-                    i--;
-                } catch (RemoteException ignored){
-                }
-            }
-            if(!added) System.out.println("Error searching!");
+        /* pagination state global variables used to cache data of the actual page to prevent unnecessary requests to the gateway */
+        ArrayList<ArrayList<String>> response = null;
+        ArrayList<ArrayList<String>> fatherUrls = null;
 
-        } else { // when no word is provided
-            System.out.println("Missing word(s) to search");
-            return;
-        }
+        // get all searched words
+        ArrayList<String> words = new ArrayList<>(Arrays.asList(providedWords).subList(1, providedWords.length));
 
-        if(response == null) System.out.println("No results found");
-        else{*/
-            ArrayList<String> words = new ArrayList<>(Arrays.asList(providedWords).subList(1, providedWords.length));
-            int page = 0;
-            final int pageSize = 10;
-            Scanner pageScanner = new Scanner(System.in);
-            boolean keepPaginating = true;
-            boolean showFatherUrls = false;
+        int page = 0;
+        final int pageSize = 10;
+        Scanner pageScanner = new Scanner(System.in);
 
-            while(keepPaginating){
+        while(keepPaginating){
+            int start = page * pageSize;
+
+            // clear the terminal (this might not work for all terminals/environments)
+            System.out.print("\033[H\033[2J");
+            System.out.flush();
+
+
+            // if the page did not change, use the previous response
+            // otherwise clear response to later get results from gateway
+            // * this is to prevent unnecessary requests *
+            if(didPageChange){
                 response = null;
-                int start = page * pageSize;
-                //int end = Math.min(start + pageSize, response.size());
-
-                System.out.print("\033[H\033[2J");
-                System.out.flush();
 
                 boolean success = false;
                 for (int i = 0; i < maxRetries; i++) {
@@ -253,20 +229,39 @@ public class Client {
                     System.out.println("No results found");
                     return;
                 }
+            }
 
-                isFreshSearch = false;
-                int totalPagesNum = Integer.parseInt(response.get(response.size()-1).get(0));
 
-                //System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
-                System.out.println("-----PAGE " + (page+1) + " of " + totalPagesNum + "-----");
-                if(showFatherUrls){
+            isFreshSearch = false;
+            int totalPagesNum = Integer.parseInt(response.get(response.size()-1).get(0));
+
+            System.out.println("-----PAGE " + (page+1) + " of " + totalPagesNum + "-----");
+            if(showFatherUrls){
+                if(!didPageChange && fatherUrls != null){
+                    System.out.println("PAGE DID NOT CHANGE AND FATHER URLS ARE NOT NULL");
+                    System.out.println("FATHER URLS: " + fatherUrls);
+                    int count = 0;
+                    for(ArrayList<String> url : response){
+                        if(count == pageSize) continue;
+                        System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                        System.out.println(fatherUrls.get(count).size() + " Father URLs: ");
+                        for(String fatherUrl : fatherUrls.get(count)){
+                            System.out.println("\t" + fatherUrl);
+                        }
+                        count++;
+                    }
+                } else {
+                    if(didPageChange)
+                        System.out.println("PAGE DID CHANGE");
+                    if(fatherUrls == null)
+                        System.out.println("FATHER URLS ARE NULL");
                     ArrayList<String> pageLines = new ArrayList<>(); // array that contains the urls on the page
-                    ArrayList<ArrayList<String>> fatherUrls = new ArrayList<>(); // array that contains arrays that contains all the father urls of the urls on the page
+                    fatherUrls = new ArrayList<>(); // array that contains arrays that contains all the father urls of the urls on the page
                     for(ArrayList<String> url : response){
                         pageLines.add(url.get(0));
                     }
 
-                    success = false;
+                    boolean success = false;
                     for(int i=0; i<maxRetries; i++){
                         try {
                             fatherUrls = gatewayRemote.getFatherUrls(pageLines);
@@ -278,6 +273,7 @@ public class Client {
                         } catch (RemoteException ignored){
                         }
                     }
+                    System.out.println("FATHER URLS: " + fatherUrls);
                     if(!success){
                         System.out.println("Error retrieving father urls!");
                         int count = 0;
@@ -294,8 +290,7 @@ public class Client {
                             System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                             count++;
                         }
-                    }
-                    else{
+                    } else {
                         int count = 0;
                         for(ArrayList<String> url : response){
                             if(count == pageSize) continue;
@@ -307,62 +302,76 @@ public class Client {
                             count++;
                         }
                     }
-
-                } else {
-                    int count = 0;
-                    for(ArrayList<String> url : response){
-                        if(count == pageSize) continue;
-                        System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
-                        count++;
-                    }
-                    /*
-                    for(int i=start; i<end; i++){
-                        ArrayList<String> pageLine = response.get(i);
-                        System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
-                    }*/
                 }
-
-
-
-                if (start == 0) {
-                    if((page+1) == totalPagesNum){
-                        System.out.print("\nexit\n(f - toggle father urls)\n>");
-                    } else{
-                        System.out.print("\nexit - next >\n(f - toggle father urls)\n>");
-                    }
-                } else if ((page+1) == totalPagesNum){
-                    System.out.print("\n< prev - exit\n(f - toggle father urls)\n>");
-                } else {
-                    System.out.print("\n< prev - exit - next >\n(f - toggle father urls)\n>");
+            } else {
+                int count = 0;
+                for(ArrayList<String> url : response){
+                    if(count == pageSize) continue;
+                    System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                    count++;
                 }
-
-                String pageCommand = pageScanner.nextLine();
-                switch (pageCommand) {
-                    case "n":
-                    case "next":
-                        if ((page+1) < totalPagesNum) {
-                            page++;
-                        }
-                        break;
-                    case "p":
-                    case "prev":
-                        if (page > 0) {
-                            page--;
-                        }
-                        break;
-                    case "f":
-                        showFatherUrls = !showFatherUrls;
-                        break;
-                    case "e":
-                    case "exit":
-                        keepPaginating = false;
-                        break;
-                    default:
-                        break;
-                }
-
             }
-        //}
+
+
+
+            if (start == 0) {
+                if((page+1) == totalPagesNum){
+                    System.out.print("\n(e)xit\n(f - toggle father urls)\n>");
+                } else{
+                    System.out.print("\n(e)xit - (n)ext >\n(f - toggle father urls)\n>");
+                }
+            } else if ((page+1) == totalPagesNum){
+                System.out.print("\n< (p)rev - (e)xit\n(f - toggle father urls)\n>");
+            } else {
+                System.out.print("\n< (p)rev - (e)xit - (n)ext >\n(f - toggle father urls)\n>");
+            }
+
+            String pageCommand = pageScanner.nextLine();
+            switch (pageCommand) {
+                case "n":
+                case "next":
+                    if ((page+1) < totalPagesNum) {
+                        page++;
+                        didPageChange = true;
+                        fatherUrls = null;
+                    } else {
+                        didPageChange = false;
+                    }
+                    break;
+                case "p":
+                case "prev":
+                    if (page > 0) {
+                        page--;
+                        didPageChange = true;
+                        fatherUrls = null;
+                    } else {
+                        didPageChange = false;
+                    }
+                    break;
+                case "f":
+                    showFatherUrls = !showFatherUrls;
+                    didPageChange = false;
+                    break;
+                case "e":
+                case "exit":
+                    keepPaginating = false;
+                    break;
+                default:
+                    if(pageCommand.isEmpty()) break;
+
+                    try{
+                        int pageNumber = Integer.parseInt(pageCommand);
+                        if(pageNumber >= 0 && pageNumber <= totalPagesNum){
+                            page = pageNumber-1;
+                            didPageChange = true;
+                            fatherUrls = null;
+                        }
+                    } catch (NumberFormatException ignored){}
+
+                    break;
+            }
+
+        }
     }
 
 
