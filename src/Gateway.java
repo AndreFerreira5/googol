@@ -1,6 +1,7 @@
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -64,14 +65,15 @@ class BarrelMetrics {
 
 
 public class Gateway extends UnicastRemoteObject implements GatewayRemote {
-    private static int rmiPort;
+    private static boolean verbosity = false;
+    private static int rmiPort = 1099; // default
     private static String rmiEndpoint;
-    public static final int CRAWLING_MAX_DEPTH = 1;
+    public static int crawlingMaxDepth = 1; // default
     public static final CrawlingStrategy crawlingStrategy = new BFSStartegy();
     public static AtomicLong PARSED_URLS = new AtomicLong();
-    public static final String MULTICAST_ADDRESS = "224.3.2.1";
-    public static final int PORT = 4322;
-    public static final char DELIMITER = '|';
+    public static String multicastAddress = "224.3.2.1"; // default
+    public static int multicastPort = 4322; // default
+    public static char parsingDelimiter = '|'; // default
     private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
     private static final ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
     private static final HashMap<String, BarrelMetrics> barrelMetricsMap = new HashMap<>();
@@ -122,23 +124,23 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
     @Override
-    public char getDelimiter() throws  RemoteException{
-        return DELIMITER;
+    public char getParsingDelimiter() throws  RemoteException{
+        return parsingDelimiter;
     }
 
     @Override
     public int getCrawlingMaxDepth() throws  RemoteException{
-        return CRAWLING_MAX_DEPTH;
+        return crawlingMaxDepth;
     }
 
     @Override
     public String getMulticastAddress() throws  RemoteException{
-        return MULTICAST_ADDRESS;
+        return multicastAddress;
     }
 
     @Override
-    public int getPort() throws  RemoteException{
-        return PORT;
+    public int getMulticastPort() throws  RemoteException{
+        return multicastPort;
     }
 
     @Override
@@ -179,7 +181,6 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     public int getRegisteredBarrelsCount() throws RemoteException{
         return barrelsOnline.size();
     }
-    //TODO make more functions so the barrels send their load info to the gateway so it can choose dynamically which one to get info from
 
     @Override
     public String getRandomBarrelRemote() throws RemoteException {
@@ -430,39 +431,154 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
 
-    public static void main(String[] args) throws InterruptedException {
+    private static boolean isValidMulticastAddress(String address) {
+        try {
+            InetAddress inetAddress = InetAddress.getByName(address);
+            return inetAddress.isMulticastAddress();
+        } catch (Exception e) {
+            System.out.println("Invalid address: " + e.getMessage());
+            return false;
+        }
+    }
+
+
+    public static boolean isValidPort(int port) {
+        // ports bellow 1024 are not recommended, so they are not considered valid
+        return port > 1024 && port <= 65535;
+    }
+
+
+    private static void loadConfig(){
         try{
+            // load gateway host
+            String verbosityConfig = GatewayConfigLoader.getProperty("gateway.verbosity");
+            if(verbosityConfig == null){
+                System.err.println("Verbosity not found in property file! Defaulting to " + verbosity + "...");
+            } else {
+                try{
+                    verbosity = Integer.parseInt(verbosityConfig) == 1;
+                    System.out.println("Verbosity: " + verbosity);
+                } catch (NumberFormatException e){
+                    System.err.println("Verbosity is not a number! Defaulting to " + verbosity + "...");
+                }
+            }
+
+            if(verbosity) System.out.println("----------CONFIG----------");
+
+            // load gateway host
             String host = GatewayConfigLoader.getProperty("gateway.host");
             if(host == null){
                 System.err.println("Gateway Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Host: " + host);
+
+            // load gateway rmi service name
             String serviceName = GatewayConfigLoader.getProperty("gateway.serviceName");
             if(serviceName == null){
                 System.err.println("Gateway Service Name property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Service Name: " + serviceName);
 
+            // build rmi endpoint
             rmiEndpoint = "//"+host+"/"+serviceName;
+            if(verbosity) System.out.println("RMI Enpoint: " + rmiEndpoint);
 
-            String port = GatewayConfigLoader.getProperty("gateway.port");
-            if(port == null){
-                System.err.println("Gateway Port property not found in property file! Exiting...");
-                System.exit(1);
+            // load rmi port
+            String rmiPortConfig = GatewayConfigLoader.getProperty("gateway.rmiPort");
+            if(rmiPortConfig == null){
+                System.err.println("Gateway RMI Port property not found in property file! Defaulting to " + rmiPort + "...");
+            } else {
+                try{
+                    rmiPort = Integer.parseInt(rmiPortConfig);
+                    if(verbosity) System.out.println("RMI Port: " + rmiPort);
+                } catch (NumberFormatException e){
+                    System.err.println("Gateway RMI Port property must be a number! Defaulting to " + rmiPort + "...");
+                }
             }
 
-            rmiPort = Integer.parseInt(port);
+            // load multicast address
+            String multicastAddressConfig = GatewayConfigLoader.getProperty("gateway.multicastAddress");
+            if(multicastAddressConfig == null){
+                System.err.println("Gateway Multicast Address property not found in property file! Defaulting to "+ multicastAddress + "...");
+            } else if(!isValidMulticastAddress(multicastAddressConfig)){
+                System.err.println("Gateway Multicast Address is not valid! Defaulting to "+ multicastAddress + "...");
+            } else {
+                multicastAddress = multicastAddressConfig;
+                if(verbosity) System.out.println("Multicast Address: " + multicastAddress);
+            }
+
+            // load multicast port
+            String multicastPortConfig = GatewayConfigLoader.getProperty("gateway.multicastPort");
+            if(multicastPortConfig == null){
+                System.err.println("Gateway Multicast Port property not found in property file! Defaulting to "+ multicastPort + "...");
+            } else{
+                try {
+                    int multicastPortInt = Integer.parseInt(multicastPortConfig);
+                    if(!isValidPort(multicastPortInt)){
+                        System.err.println("Gateway Multicast Address is not valid! Defaulting to "+ multicastPort + "...");
+                    } else {
+                        multicastPort = multicastPortInt;
+                        if(verbosity) System.out.println("Multicast Port: " + multicastPort);
+                    }
+                } catch (NumberFormatException ignored){
+                    System.err.println("Gateway Multicast Port is not valid! Defaulting to " + multicastPort + "...");
+                }
+            }
+
+            // load parsing delimiter
+            String parsingDelimiterConfig = GatewayConfigLoader.getProperty("gateway.parsingDelimiter");
+            if(parsingDelimiterConfig == null){
+                System.err.println("Parsing Delimiter property not found in property file! Defaulting to "+ parsingDelimiter + "...");
+            } else {
+                if (parsingDelimiterConfig.length() == 1) {
+                    parsingDelimiter = parsingDelimiterConfig.charAt(0);
+                    if(verbosity) System.out.println("Parsing Delimiter: " + parsingDelimiter);
+                } else {
+                    System.err.println("Parsing Delimiter in the property file is not a single character. Defaulting to " + parsingDelimiter + "...");
+                }
+            }
+
+            // load crawling max depth
+            String crawlingMaxDepthConfig = GatewayConfigLoader.getProperty("gateway.crawlingMaxDepth");
+            if(crawlingMaxDepthConfig == null){
+                System.err.println("Crawler Max Depth property not found in property file! Defaulting to "+ crawlingMaxDepth + "...");
+            } else {
+                try{
+                    int crawlingMaxDepthInt = Integer.parseInt(crawlingMaxDepthConfig);
+                    if (crawlingMaxDepthInt >= 0) {
+                        crawlingMaxDepth = crawlingMaxDepthInt;
+                        if(verbosity) System.out.println("Crawling Max Depth: " + crawlingMaxDepth);
+                    } else {
+                        System.err.println("Crawling Max Depth must be greater or equal to 0. Defaulting to " + crawlingMaxDepth + "...");
+                    }
+                } catch (NumberFormatException ignored){
+                    System.err.println("Crawling Max Depth must be a number! Defaulting to " + crawlingMaxDepth + "...");
+                }
+            }
+
+
         } catch (GatewayConfigLoader.ConfigurationException e){
             System.err.println("Failed to load configuration file: " + e.getMessage());
             System.err.println("Exiting...");
+            if(verbosity) System.out.println("-------------------------\n\n");
             System.exit(1);
         }
+
+        if(verbosity) System.out.println("-------------------------\n\n");
+    }
+
+
+    public static void main(String[] args) throws InterruptedException {
+        loadConfig();
 
         if(!setupGatewayRMI()) System.exit(1);
 
         int infoInterval = 5000;
         while(true){
-            int barrelsNum = barrelsOnline.size();
+            Thread.sleep(infoInterval);
+
             System.out.print("\033[H\033[2J");
             System.out.flush();
             System.out.print("\rBarrel - Availability - Average Latency");
@@ -471,7 +587,6 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             }
             System.out.println("\n");
             System.out.println("Urls in queue: " + urlsDeque.size());
-            Thread.sleep(infoInterval);
         }
     }
 }

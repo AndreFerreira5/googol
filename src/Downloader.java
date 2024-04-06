@@ -49,13 +49,14 @@ class DownloaderConfigLoader{
 
 
 public class Downloader{
+    private static boolean verbosity = false; // default
     private static final UUID uuid = UUID.randomUUID();
     private static int crawlingMaxDepth;
-    private static final int urlTimeout = 2000;
+    private static int urlTimeout = 2000;
     private static String multicastAddress;
     private static int port;
-    private static final int maxRetries = 5;
-    private static final int retryDelay = 1000; // 1 second
+    private static int maxRetries = 5;
+    private static int retryDelay = 1000; // 1 second
     private static char DELIMITER;
     private static GatewayRemote gatewayRemote;
     private static String gatewayEndpoint;
@@ -94,6 +95,7 @@ public class Downloader{
                 
                 fatherUrls.add(href + DELIMITER);
                 try{
+                    if(depth+1 > crawlingMaxDepth) continue;
                     RawUrl rawUrl = new RawUrl(href, depth+1);
                     rawUrls.add(rawUrl);
                 } catch (Exception ignored){} // if url is invalid or depth exceeds the max, just ignore it and go to the next url
@@ -308,10 +310,10 @@ public class Downloader{
         while(true){
             try {
                 GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
-                DELIMITER = gateway.getDelimiter();
+                DELIMITER = gateway.getParsingDelimiter();
                 crawlingMaxDepth = gateway.getCrawlingMaxDepth();
                 multicastAddress = gateway.getMulticastAddress();
-                port = gateway.getPort();
+                port = gateway.getMulticastPort();
                 return gateway;
             } catch (Exception e) {
                 System.out.println("Failed to connect to Gateway! Retrying in " + retryDelay + " seconds...");
@@ -340,6 +342,109 @@ public class Downloader{
     }
 
 
+    private static void loadConfig(){
+        try{
+            // load verbosity
+            String verbosityConfig = DownloaderConfigLoader.getProperty("downloader.verbosity");
+            if(verbosityConfig == null){
+                System.err.println("Verbosity not found in property file! Defaulting to " + verbosity + "...");
+            } else {
+                try{
+                    verbosity = Integer.parseInt(verbosityConfig) == 1;
+                    System.out.println("Verbosity: " + verbosity);
+                } catch (NumberFormatException e){
+                    System.err.println("Verbosity is not a number! Defaulting to " + verbosity + "...");
+                }
+            }
+
+            if(verbosity) System.out.println("----------CONFIG----------");
+
+
+            String gatewayHost = DownloaderConfigLoader.getProperty("gateway.host");
+            if(gatewayHost == null){
+                System.err.println("Gateway Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            if(verbosity) System.out.println("Gateway Host: " + gatewayHost);
+
+            String gatewayServiceName = DownloaderConfigLoader.getProperty("gateway.serviceName");
+            if(gatewayServiceName == null){
+                System.err.println("Gateway Service Name property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            if(verbosity) System.out.println("Gateway Service Name: " + gatewayServiceName);
+
+            gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+            if(verbosity) System.out.println("Gateway Endpoint: " + gatewayEndpoint);
+
+            // load url timeout
+            String urlTimeoutConfig = DownloaderConfigLoader.getProperty("downloader.urlTimeout");
+            if(urlTimeoutConfig == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Url Timeout property not found in property file! Defaulting to " + urlTimeout + "...");
+            } else { // if found, check it
+                try {
+                    int urlTimeoutInt = Integer.parseInt(urlTimeoutConfig);
+                    if (urlTimeoutInt > 0) { // if retry delay is valid
+                        urlTimeout = urlTimeoutInt;
+                        if(verbosity) System.out.println("Url Timeout: " + urlTimeout);
+                    } else { // if retry delay is not valid, set it to default (defined on top of the class)
+                        System.out.println("Url Timeout cannot be lower or equal to 0! Defaulting to " + urlTimeout + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Url Timeout is not a number! Defaulting to " + urlTimeout + "...");
+                }
+
+            }
+
+            // load max retries num
+            String  maxRetriesConfig = DownloaderConfigLoader.getProperty("downloader.maxRetries");
+            if(maxRetriesConfig == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Barrel Max Retries property not found in property file! Defaulting to " + maxRetries + "...");
+            } else { // if found, check it
+                try{
+                    int maxRetriesInt = Integer.parseInt(maxRetriesConfig);
+                    if (maxRetriesInt > 0) { // if max number of retries is valid
+                        maxRetries = maxRetriesInt;
+                        if(verbosity) System.out.println("Max Retries: " + maxRetries);
+                    } else { // if max number of retries is not valid, set it to default (defined on top of the class)
+                        System.out.println("Max Retries cannot be lower or equal to 0! Defaulting to " + maxRetries + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Max Retries is not a number! Defaulting to " + maxRetries + "...");
+                }
+
+            }
+
+            // load retry delay
+            String retryDelayProperty = DownloaderConfigLoader.getProperty("downloader.retryDelay");
+            if(retryDelayProperty == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Retry Delay property not found in property file! Defaulting to " + retryDelay + "...");
+            } else { // if found, check it
+                try {
+                    int retryDelayInt = Integer.parseInt(retryDelayProperty);
+                    if (retryDelayInt > 0) { // if retry delay is valid
+                        retryDelay = retryDelayInt;
+                        if(verbosity) System.out.println("Retry Delay: " + retryDelay);
+                    } else { // if retry delay is not valid, set it to default (defined on top of the class)
+                        System.out.println("Retry Delay cannot be lower or equal to 0! Defaulting to " + retryDelay + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Retry Delay is not a number! Defaulting to " + retryDelay + "...");
+                }
+
+            }
+
+        } catch (DownloaderConfigLoader.ConfigurationException e) {
+            System.err.println("Failed to load configuration file: " + e.getMessage());
+            System.err.println("Exiting...");
+            if(verbosity) System.out.println("-------------------------\n\n");
+            System.exit(1);
+        }
+
+        if(verbosity) System.out.println("-------------------------\n\n");
+    }
+
+
     /**
      * The entry point of application.
      *
@@ -348,26 +453,9 @@ public class Downloader{
     public static void main(String[] args) {
         log("UP!");
 
-        try{
-            String gatewayHost = DownloaderConfigLoader.getProperty("gateway.host");
-            if(gatewayHost == null){
-                System.err.println("Gateway Host property not found in property file! Exiting...");
-                System.exit(1);
-            }
-            String gatewayServiceName = DownloaderConfigLoader.getProperty("gateway.serviceName");
-            if(gatewayServiceName == null){
-                System.err.println("Gateway Service Name property not found in property file! Exiting...");
-                System.exit(1);
-            }
+        loadConfig();
 
-            gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
-
-        } catch (DownloaderConfigLoader.ConfigurationException e) {
-            System.err.println("Failed to load configuration file: " + e.getMessage());
-            System.err.println("Exiting...");
-        }
-
-            // setup gateway RMI
+        // setup gateway RMI
         gatewayRemote = connectToGatewayRMI();
         if(gatewayRemote == null) System.exit(1);
 

@@ -38,8 +38,9 @@ class ClientConfigLoader {
 }
 
 public class Client {
-    private static final int maxRetries = 5;
-    private static final int retryDelay = 1000;
+    private static boolean verbosity = false; // default
+    private static int maxRetries = 5; // default
+    private static int retryDelay = 1000; // default
     private static GatewayRemote gatewayRemote;
     private static String gatewayEndpoint;
     private static final String[] AVAILABLE_COMMANDS = {"help",
@@ -58,31 +59,6 @@ public class Client {
                                                             "Close client",
                                                             "Get system status"
                                                             };
-
-
-    /*
-    public static <T> T callGatewayRMI(Supplier<T> action, String failureMessage) {
-        T result = null;
-        boolean success = false;
-
-        for(int i = 0; i < maxRetries; i++) {
-            try {
-                result = action.get();
-                success = true;
-                break;
-            } catch (ConnectException e) {
-                reconnectToGatewayRMI();
-                i--;
-            } catch (RemoteException ignored) {}
-        }
-
-        if(!success) {
-            System.out.println(failureMessage);
-            return null;
-        }
-
-        return result;
-    }*/
 
 
     private static GatewayRemote connectToGatewayRMI(){
@@ -354,6 +330,8 @@ public class Client {
                     break;
                 case "e":
                 case "exit":
+                    System.out.print("\033[H\033[2J");
+                    System.out.flush();
                     keepPaginating = false;
                     break;
                 default:
@@ -424,26 +402,90 @@ public class Client {
     }
 
 
-    public static void main(String[] args){
+    private static void loadConfig(){
         try{
+            // load verbosity
+            String verbosityConfig = ClientConfigLoader.getProperty("client.verbosity");
+            if(verbosityConfig == null){
+                System.err.println("Verbosity not found in property file! Defaulting to " + verbosity + "...");
+            } else {
+                try{
+                    verbosity = Integer.parseInt(verbosityConfig) == 1;
+                    System.out.println("Verbosity: " + verbosity);
+                } catch (NumberFormatException e){
+                    System.err.println("Verbosity is not a number! Defaulting to " + verbosity + "...");
+                }
+            }
+
+            if(verbosity) System.out.println("----------CONFIG----------");
+
+
             String gatewayHost = ClientConfigLoader.getProperty("gateway.host");
             if(gatewayHost == null){
                 System.err.println("Gateway Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Gateway Host: " + gatewayHost);
+
             String gatewayServiceName = ClientConfigLoader.getProperty("gateway.serviceName");
             if(gatewayServiceName == null){
                 System.err.println("Gateway Service Name property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Gateway Service Name: " + gatewayServiceName);
 
             gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+            if(verbosity) System.out.println("Gateway Endpoint: " + gatewayEndpoint);
+
+            // load max retires num
+            String  maxRetriesConfig = ClientConfigLoader.getProperty("client.maxRetries");
+            if(maxRetriesConfig == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Max Retries property not found in property file! Defaulting to " + maxRetries + "...");
+            } else { // if found, check it
+                try{
+                    int maxRetriesInt = Integer.parseInt(maxRetriesConfig);
+                    if (maxRetriesInt > 0) { // if max number of retries is valid
+                        maxRetries = maxRetriesInt;
+                        if(verbosity) System.out.println("Max Retries: " + maxRetries);
+                    } else { // if max number of retries is not valid, set it to default (defined on top of the class)
+                        System.out.println("Max Retries cannot be lower or equal to 0! Defaulting to " + maxRetries + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Max Retries is not a number! Defaulting to " + maxRetries + "...");
+                }
+
+            }
+
+            // load retry delay
+            String retryDelayProperty = ClientConfigLoader.getProperty("client.retryDelay");
+            if(retryDelayProperty == null){ // if not found, set to default (defined on top of the class)
+                System.err.println("Retry Delay property not found in property file! Defaulting to " + retryDelay + "...");
+            } else { // if found, check it
+                try {
+                    int retryDelayInt = Integer.parseInt(retryDelayProperty);
+                    if (retryDelayInt > 0) { // if retry delay is valid
+                        retryDelay = retryDelayInt;
+                        if(verbosity) System.out.println("Retry Delay: " + retryDelay);
+                    } else { // if retry delay is not valid, set it to default (defined on top of the class)
+                        System.out.println("Retry Delay cannot be lower or equal to 0! Defaulting to " + retryDelay + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Retry Delay is not a number! Defaulting to " + retryDelay + "...");
+                }
+
+            }
 
         } catch (ClientConfigLoader.ConfigurationException e){
             System.err.println("Failed to load configuration file: " + e.getMessage());
             System.err.println("Exiting...");
+            if(verbosity) System.out.println("-------------------------\n\n");
             System.exit(1);
         }
+
+        if(verbosity) System.out.println("-------------------------\n\n");
+    }
+    public static void main(String[] args){
+        loadConfig();
 
         Scanner scanner = new Scanner(System.in);
 

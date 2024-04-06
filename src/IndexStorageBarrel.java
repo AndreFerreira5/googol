@@ -47,6 +47,7 @@ class BarrelConfigLoader {
 
 
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
+    private static boolean verbosity = false; // default
     private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
     private static String barrelRMIEndpoint;
@@ -310,9 +311,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         try {
             System.out.println(gatewayEndpoint);
             GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
-            DELIMITER = gateway.getDelimiter();
+            DELIMITER = gateway.getParsingDelimiter();
             multicastAddress = gateway.getMulticastAddress();
-            port = gateway.getPort();
+            port = gateway.getMulticastPort();
             return gateway;
         } catch (Exception e) {
             System.out.println("GatewayClient exception: " + e.getMessage());
@@ -443,22 +444,41 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
     private static void loadConfig(){
         try{
+            // load verbosity
+            String verbosityConfig = BarrelConfigLoader.getProperty("barrel.verbosity");
+            if(verbosityConfig == null){
+                System.err.println("Verbosity not found in property file! Defaulting to " + verbosity + "...");
+            } else {
+                try{
+                    verbosity = Integer.parseInt(verbosityConfig) == 1;
+                    System.out.println("Verbosity: " + verbosity);
+                } catch (NumberFormatException e){
+                    System.err.println("Verbosity is not a number! Defaulting to " + verbosity + "...");
+                }
+            }
+
+            if(verbosity) System.out.println("----------CONFIG----------");
+
+
             // load gateway rmi host
             String gatewayHost = BarrelConfigLoader.getProperty("gateway.host");
             if(gatewayHost == null){
                 System.err.println("Gateway Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Gateway Host: " + gatewayHost);
 
-            // load gateway rmi service name
+                // load gateway rmi service name
             String gatewayServiceName = BarrelConfigLoader.getProperty("gateway.serviceName");
             if(gatewayServiceName == null){
                 System.err.println("Gateway Service Name property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Gateway Service Name: " + gatewayServiceName);
 
             // build gateway rmi endpoint
             gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+            if(verbosity) System.out.println("Gateway Endpoint: " + gatewayEndpoint);
 
             // load barrel host
             String barrelHost = BarrelConfigLoader.getProperty("barrel.host");
@@ -466,20 +486,29 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 System.err.println("Barrel Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+            if(verbosity) System.out.println("Barrel Host: " + barrelHost);
 
             // build barrel rmi endpoint with its uuid
             barrelRMIEndpoint = "//"+barrelHost+"/IndexStorageBarrel-"+uuid.toString();
+            if(verbosity) System.out.println("Barrel RMI Endpoint: " + barrelRMIEndpoint);
 
             // load helper threads num
             String helperThreads = BarrelConfigLoader.getProperty("barrel.helperThreads");
             if(helperThreads == null){ // if not found, set to default (defined on top of the class)
                 System.out.println("Barrel Helper Threads property not found in property file! Defaulting to " + helperThreadsNum +"...");
             } else { // if found, check it
-                int helperThreadsInt = Integer.parseInt(helperThreads);
-                if(helperThreadsInt > 0) // if number of threads is valid
-                    helperThreadsNum = helperThreadsInt;
-                else // if number of threads is not valid, set to default (defined on top of the class)
-                    System.out.println("Barrel Helper Threads Num cannot be lower or equal to 0! Defaulting to " + helperThreadsNum +"...");
+                try{
+                    int helperThreadsInt = Integer.parseInt(helperThreads);
+                    if (helperThreadsInt > 0) { // if number of threads is valid
+                        helperThreadsNum = helperThreadsInt;
+                        if(verbosity) System.out.println("Helper Threads Num: " + helperThreadsNum);
+                    } else { // if number of threads is not valid, set to default (defined on top of the class)
+                        System.out.println("Barrel Helper Threads Num cannot be lower or equal to 0! Defaulting to " + helperThreadsNum + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Helper Threads Num is not a number! Defaulting to " + helperThreadsNum + "...");
+                }
+
             }
 
             // load max retires num
@@ -487,11 +516,18 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             if(maxRetriesConfig == null){ // if not found, set to default (defined on top of the class)
                 System.err.println("Barrel Max Retries property not found in property file! Defaulting to " + maxRetries + "...");
             } else { // if found, check it
-                int maxRetriesInt = Integer.parseInt(maxRetriesConfig);
-                if(maxRetriesInt > 0) // if max number of retries is valid
-                    maxRetries = maxRetriesInt;
-                else // if max number of retries is not valid, set it to default (defined on top of the class)
-                    System.out.println("Barrel Max Retries cannot be lower or equal to 0! Defaulting to " + maxRetries +"...");
+                try{
+                    int maxRetriesInt = Integer.parseInt(maxRetriesConfig);
+                    if (maxRetriesInt > 0) { // if max number of retries is valid
+                        maxRetries = maxRetriesInt;
+                        if(verbosity) System.out.println("Max Retries: " + maxRetries);
+                    } else { // if max number of retries is not valid, set it to default (defined on top of the class)
+                        System.out.println("Barrel Max Retries cannot be lower or equal to 0! Defaulting to " + maxRetries + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Max Retries is not a number! Defaulting to " + maxRetries + "...");
+                }
+
             }
 
             // load retry delay
@@ -499,11 +535,18 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             if(retryDelayProperty == null){ // if not found, set to default (defined on top of the class)
                 System.err.println("Barrel Retry Delay property not found in property file! Defaulting to " + retryDelay + "...");
             } else { // if found, check it
-                int retryDelayInt = Integer.parseInt(retryDelayProperty);
-                if(retryDelayInt > 0) // if retry delay is valid
-                    retryDelay = retryDelayInt;
-                else // if retry delay is not valid, set it to default (defined on top of the class)
-                    System.out.println("Barrel Retry Delay cannot be lower or equal to 0! Defaulting to " + retryDelay +"...");
+                try {
+                    int retryDelayInt = Integer.parseInt(retryDelayProperty);
+                    if (retryDelayInt > 0) { // if retry delay is valid
+                        retryDelay = retryDelayInt;
+                        if(verbosity) System.out.println("Retry Delay: " + retryDelay);
+                    } else { // if retry delay is not valid, set it to default (defined on top of the class)
+                        System.out.println("Retry Delay cannot be lower or equal to 0! Defaulting to " + retryDelay + "...");
+                    }
+                } catch (NumberFormatException e){
+                    System.err.println("Retry Delay is not a number! Defaulting to " + retryDelay + "...");
+                }
+
             }
 
             // load exportation delay
@@ -511,16 +554,26 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             if(exportationDelayProperty == null){ // if not found, set to default (defined on top of the class)
                 System.err.println("Barrel Exportation Delay property not found in property file! Defaulting to " + exportationDelay + "...");
             } else { // if found, check it
-                int exportationDelayInt = Integer.parseInt(exportationDelayProperty);
-                if(exportationDelayInt > 10000) // if exportation delay is valid
-                    exportationDelay = exportationDelayInt;
-                else // if exportation delay is not valid, set it to default (defined on top of the class)
-                    System.out.println("Barrel Exportation Delay cannot be lower or equal to 10000 (10 seconds)! Defaulting to " + exportationDelay + "...");
+                try{
+                    int exportationDelayInt = Integer.parseInt(exportationDelayProperty);
+                    if(exportationDelayInt > 10000) { // if exportation delay is valid
+                        exportationDelay = exportationDelayInt;
+                        if(verbosity) System.out.println("Exportation Delay: " + exportationDelay);
+                    } else { // if exportation delay is not valid, set it to default (defined on top of the class)
+                        System.out.println("Barrel Exportation Delay cannot be lower or equal to 10000 (10 seconds)! Defaulting to " + exportationDelay + "...");
+                    }
+                } catch (NumberFormatException ignored){
+                    System.err.println("Exportation Delay is not a number! Defaulting to " + exportationDelay + "...");
+                }
             }
         } catch (BarrelConfigLoader.ConfigurationException e) {
             System.err.println("Failed to load configuration file: " + e.getMessage());
             System.err.println("Exiting...");
+            if(verbosity) System.out.println("-------------------------\n\n");
+            System.exit(1);
         }
+
+        if(verbosity) System.out.println("-------------------------\n\n");
     }
     public static void main(String[] args){
         log("UP!");
