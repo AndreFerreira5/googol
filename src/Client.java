@@ -1,15 +1,47 @@
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Properties;
 import java.util.Scanner;
-import java.util.function.Supplier;
+
+
+class ClientConfigLoader {
+    private static final Properties properties = new Properties();
+
+    public static class ConfigurationException extends RuntimeException {
+        public ConfigurationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    static{
+        loadProperties();
+    }
+
+    private static void loadProperties(){
+        String filePath = "config/client.properties";
+        try (InputStream input = new FileInputStream(filePath)){
+            properties.load(input);
+        } catch (IOException e){
+            throw new ConfigurationException("Failed to load configuration properties", e);
+        }
+    }
+
+    public static String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+}
 
 public class Client {
     private static final int maxRetries = 5;
     private static final int retryDelay = 1000;
     private static GatewayRemote gatewayRemote;
+    private static String gatewayEndpoint;
     private static final String[] AVAILABLE_COMMANDS = {"help",
                                                         "clear",
                                                         "index",
@@ -54,11 +86,19 @@ public class Client {
 
 
     private static GatewayRemote connectToGatewayRMI(){
-        try {
-            return (GatewayRemote) Naming.lookup("//localhost/GatewayService");
-        } catch (Exception e) {
-            System.out.println("GatewayClient exception: " + e.getMessage());
-            return null;
+        while(true){
+            try {
+                return (GatewayRemote) Naming.lookup(gatewayEndpoint);
+            } catch (Exception e) {
+                System.out.println("Failed to connect to Gateway! Retrying in " + retryDelay + " seconds...");
+                try{
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException ignored){
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+
+            }
         }
     }
 
@@ -135,7 +175,9 @@ public class Client {
 
 
     private static void searchWords(String[] providedWords){
-        ArrayList<ArrayList<String>> response = null;
+        boolean isFreshSearch = true;
+        ArrayList<ArrayList<String>> response;
+        /*
         if(providedWords.length > 2){ // when searching more than one word
             ArrayList<String> words = new ArrayList<>(Arrays.asList(providedWords).subList(1, providedWords.length));
 
@@ -172,7 +214,8 @@ public class Client {
         }
 
         if(response == null) System.out.println("No results found");
-        else{
+        else{*/
+            ArrayList<String> words = new ArrayList<>(Arrays.asList(providedWords).subList(1, providedWords.length));
             int page = 0;
             final int pageSize = 10;
             Scanner pageScanner = new Scanner(System.in);
@@ -180,21 +223,50 @@ public class Client {
             boolean showFatherUrls = false;
 
             while(keepPaginating){
+                response = null;
                 int start = page * pageSize;
-                int end = Math.min(start + pageSize, response.size());
+                //int end = Math.min(start + pageSize, response.size());
 
                 System.out.print("\033[H\033[2J");
                 System.out.flush();
 
-                System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
+                boolean success = false;
+                for (int i = 0; i < maxRetries; i++) {
+                    try {
+                        if (words.size() > 1) {
+                            response = gatewayRemote.searchWordSet(words, page, pageSize, isFreshSearch);
+                        } else {
+                            response = gatewayRemote.searchWord(words.get(0), page, pageSize, isFreshSearch);
+                        }
+                        success = true;
+                        break;
+                    } catch (ConnectException e) {
+                        reconnectToGatewayRMI();
+                        i--;
+                    } catch (RemoteException ignored) {
+                    }
+                }
+                if(!success){
+                    System.out.println("Error searching!");
+                    return;
+                } else if(response == null){
+                    System.out.println("No results found");
+                    return;
+                }
+
+                isFreshSearch = false;
+                int totalPagesNum = Integer.parseInt(response.get(response.size()-1).get(0));
+
+                //System.out.println("-----PAGE " + (page + 1) + " of " + (response.size() / pageSize + 1) + "-----");
+                System.out.println("-----PAGE " + (page+1) + " of " + totalPagesNum + "-----");
                 if(showFatherUrls){
                     ArrayList<String> pageLines = new ArrayList<>(); // array that contains the urls on the page
                     ArrayList<ArrayList<String>> fatherUrls = new ArrayList<>(); // array that contains arrays that contains all the father urls of the urls on the page
-                    for(int i=start; i<end; i++){
-                        pageLines.add(response.get(i).get(0));
+                    for(ArrayList<String> url : response){
+                        pageLines.add(url.get(0));
                     }
 
-                    boolean success = false;
+                    success = false;
                     for(int i=0; i<maxRetries; i++){
                         try {
                             fatherUrls = gatewayRemote.getFatherUrls(pageLines);
@@ -206,40 +278,59 @@ public class Client {
                         } catch (RemoteException ignored){
                         }
                     }
-                    if(!success || fatherUrls == null){
+                    if(!success){
                         System.out.println("Error retrieving father urls!");
-                        for(int i=start; i<end; i++){
-                            ArrayList<String> pageLine = response.get(i);
-                            System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
+                        int count = 0;
+                        for(ArrayList<String> url : response){
+                            if(count == pageSize) continue;
+                            System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                            count++;
+                        }
+                    } else if(fatherUrls == null || fatherUrls.isEmpty()){
+                        System.out.println("No father urls found!");
+                        int count = 0;
+                        for(ArrayList<String> url : response){
+                            if(count == pageSize) continue;
+                            System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                            count++;
                         }
                     }
                     else{
-                        System.out.println(fatherUrls);
-                        for(int i=start; i<end; i++){
-                            ArrayList<String> pageLine = response.get(i);
-                            System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
-                            System.out.println("Father URLs: ");
-                            for(String fatherUrl : fatherUrls.get(i-start)){
+                        int count = 0;
+                        for(ArrayList<String> url : response){
+                            if(count == pageSize) continue;
+                            System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                            System.out.println(fatherUrls.get(count).size() + " Father URLs: ");
+                            for(String fatherUrl : fatherUrls.get(count)){
                                 System.out.println("\t" + fatherUrl);
                             }
+                            count++;
                         }
                     }
 
                 } else {
+                    int count = 0;
+                    for(ArrayList<String> url : response){
+                        if(count == pageSize) continue;
+                        System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
+                        count++;
+                    }
+                    /*
                     for(int i=start; i<end; i++){
                         ArrayList<String> pageLine = response.get(i);
                         System.out.println(i+1 + ". " + pageLine.get(0) + (pageLine.get(1) == null || pageLine.get(1).isEmpty() ? "" : " - " + pageLine.get(2)) + (pageLine.get(2) == null || pageLine.get(2).isEmpty() ? "" : " - " + pageLine.get(2)));
-                    }
+                    }*/
                 }
 
 
+
                 if (start == 0) {
-                    if(end == response.size()){
+                    if((page+1) == totalPagesNum){
                         System.out.print("\nexit\n(f - toggle father urls)\n>");
                     } else{
                         System.out.print("\nexit - next >\n(f - toggle father urls)\n>");
                     }
-                } else if (end == response.size()){
+                } else if ((page+1) == totalPagesNum){
                     System.out.print("\n< prev - exit\n(f - toggle father urls)\n>");
                 } else {
                     System.out.print("\n< prev - exit - next >\n(f - toggle father urls)\n>");
@@ -249,7 +340,7 @@ public class Client {
                 switch (pageCommand) {
                     case "n":
                     case "next":
-                        if (end < response.size()) {
+                        if ((page+1) < totalPagesNum) {
                             page++;
                         }
                         break;
@@ -271,7 +362,7 @@ public class Client {
                 }
 
             }
-        }
+        //}
     }
 
 
@@ -325,6 +416,26 @@ public class Client {
 
 
     public static void main(String[] args){
+        try{
+            String gatewayHost = ClientConfigLoader.getProperty("gateway.host");
+            if(gatewayHost == null){
+                System.err.println("Gateway Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            String gatewayServiceName = ClientConfigLoader.getProperty("gateway.serviceName");
+            if(gatewayServiceName == null){
+                System.err.println("Gateway Service Name property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+
+        } catch (ClientConfigLoader.ConfigurationException e){
+            System.err.println("Failed to load configuration file: " + e.getMessage());
+            System.err.println("Exiting...");
+            System.exit(1);
+        }
+
         Scanner scanner = new Scanner(System.in);
 
         // setup gateway RMI

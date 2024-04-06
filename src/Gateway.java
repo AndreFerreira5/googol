@@ -1,3 +1,6 @@
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -6,6 +9,35 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
+
+
+class GatewayConfigLoader {
+    private static final Properties properties = new Properties();
+
+    public static class ConfigurationException extends RuntimeException {
+        public ConfigurationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    static{
+        loadProperties();
+    }
+
+    private static void loadProperties(){
+        String filePath = "config/gateway.properties";
+        try (InputStream input = new FileInputStream(filePath)){
+            properties.load(input);
+        } catch (IOException e){
+            throw new ConfigurationException("Failed to load configuration properties", e);
+        }
+    }
+
+    public static String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+}
+
 
 
 class BarrelMetrics {
@@ -32,13 +64,13 @@ class BarrelMetrics {
 
 
 public class Gateway extends UnicastRemoteObject implements GatewayRemote {
-    private static final int rmiPort = 1099;
+    private static int rmiPort;
+    private static String rmiEndpoint;
     public static final int CRAWLING_MAX_DEPTH = 1;
     public static final CrawlingStrategy crawlingStrategy = new BFSStartegy();
     public static AtomicLong PARSED_URLS = new AtomicLong();
     public static final String MULTICAST_ADDRESS = "224.3.2.1";
     public static final int PORT = 4322;
-    private static final String host = "localhost";
     public static final char DELIMITER = '|';
     private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
     private static final ConcurrentHashMap<String, String> barrelsOnline = new ConcurrentHashMap<>();
@@ -291,8 +323,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
     @Override
-    public ArrayList<ArrayList<String>> searchWord(String word) throws RemoteException{
-        countSearch(word);
+    public ArrayList<ArrayList<String>> searchWord(String word, int page, int pageSize, boolean isFreshSearch) throws RemoteException{
+        if(isFreshSearch) countSearch(word);
         updateBarrelsAvailability();
 
         String bestBarrel = getMostAvailableBarrel();
@@ -309,7 +341,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         }
 
         long start = System.nanoTime();
-        ArrayList<ArrayList<String>> response = barrel.searchWord(word);
+        ArrayList<ArrayList<String>> response = barrel.searchWord(word, page, pageSize);
         System.out.println("RESPONSE!!!!!!!!!!! " + response);
         long end = System.nanoTime();
         double elapsedTime = end - start;
@@ -347,8 +379,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
 
     @Override
-    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words) throws RemoteException{
-        countSearch(String.valueOf(words));
+    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words, int page, int pageSize, boolean isFreshSearch) throws RemoteException{
+        if(isFreshSearch) countSearch(String.valueOf(words));
         updateBarrelsAvailability();
 
         String bestBarrel = getMostAvailableBarrel();
@@ -363,7 +395,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         }
 
         long start = System.nanoTime();
-        ArrayList<ArrayList<String>> response = barrel.searchWordSet(words);
+        ArrayList<ArrayList<String>> response = barrel.searchWordSet(words, page, pageSize);
         long end = System.nanoTime();
         double elapsedTime = end - start;
 
@@ -413,7 +445,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         try {
             Gateway gateway = new Gateway();
             LocateRegistry.createRegistry(rmiPort);
-            Naming.rebind("//" + host + "/GatewayService", gateway);
+            Naming.rebind(rmiEndpoint, gateway);
             System.out.println("Gateway Service bound in registry");
             return true;
         } catch (Exception e) {
@@ -424,6 +456,33 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
 
     public static void main(String[] args) throws InterruptedException {
+        try{
+            String host = GatewayConfigLoader.getProperty("gateway.host");
+            if(host == null){
+                System.err.println("Gateway Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            String serviceName = GatewayConfigLoader.getProperty("gateway.serviceName");
+            if(serviceName == null){
+                System.err.println("Gateway Service Name property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            rmiEndpoint = "//"+host+"/"+serviceName;
+
+            String port = GatewayConfigLoader.getProperty("gateway.port");
+            if(port == null){
+                System.err.println("Gateway Port property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            rmiPort = Integer.parseInt(port);
+        } catch (GatewayConfigLoader.ConfigurationException e){
+            System.err.println("Failed to load configuration file: " + e.getMessage());
+            System.err.println("Exiting...");
+            System.exit(1);
+        }
+
         if(!setupGatewayRMI()) System.exit(1);
 
         int infoInterval = 5000;

@@ -1,23 +1,52 @@
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.net.*;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
+import java.util.Properties;
 import java.util.function.BiConsumer;
 import java.util.ArrayList;
 import java.util.HashSet;
-
+import java.util.UUID;
+import java.net.InetAddress;
+import java.net.MulticastSocket;
+import java.io.IOException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.jsoup.nodes.Document;
 
-import java.util.UUID;
-import java.net.InetAddress;
-import java.net.MulticastSocket;
 
-import java.io.IOException;
+class DownloaderConfigLoader{
+    private static final Properties properties = new Properties();
+
+    public static class ConfigurationException extends RuntimeException {
+        public ConfigurationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    static{
+        loadProperties();
+    }
+
+    private static void loadProperties(){
+        String filePath = "config/downloader.properties";
+        try (InputStream input = new FileInputStream(filePath)){
+            properties.load(input);
+        } catch (IOException e){
+            throw new ConfigurationException("Failed to load configuration properties", e);
+        }
+    }
+
+    public static String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+}
+
 
 public class Downloader{
     private static final UUID uuid = UUID.randomUUID();
@@ -25,11 +54,11 @@ public class Downloader{
     private static final int urlTimeout = 2000;
     private static String multicastAddress;
     private static int port;
-    private static final String host = "localhost";
     private static final int maxRetries = 5;
     private static final int retryDelay = 1000; // 1 second
     private static char DELIMITER;
     private static GatewayRemote gatewayRemote;
+    private static String gatewayEndpoint;
 
 
     private static void log(String text){
@@ -120,8 +149,7 @@ public class Downloader{
 
     private static MulticastSocket setupMulticastServer(){
         MulticastSocket socket = null;
-        int attempts = 0;
-        while(attempts < maxRetries){
+        while(true){
             try{
                 socket = new MulticastSocket(port);
                 InetAddress group = InetAddress.getByName(multicastAddress);
@@ -131,7 +159,6 @@ public class Downloader{
                 System.out.println(multicastAddress);
                 System.out.println(e.getMessage());
                 log("Error setting up multicast server! Retrying in "+ retryDelay +"s...");
-                attempts++;
                 try {
                     Thread.sleep(retryDelay); // wait before retrying
                 } catch (InterruptedException ie) {
@@ -142,10 +169,12 @@ public class Downloader{
             }
         }
 
+        /*
         // if the connection wasn't successful
         if(socket != null) socket.close();
         log("Error setting up multicast server after " + maxRetries + " attempts! Exiting...");
         return null;
+         */
     }
 
 
@@ -276,16 +305,24 @@ public class Downloader{
 
 
     private static GatewayRemote connectToGatewayRMI(){
-        try {
-            GatewayRemote gateway = (GatewayRemote) Naming.lookup("//" + host + "/GatewayService");
-            DELIMITER = gateway.getDelimiter();
-            crawlingMaxDepth = gateway.getCrawlingMaxDepth();
-            multicastAddress = gateway.getMulticastAddress();
-            port = gateway.getPort();
-            return gateway;
-        } catch (Exception e) {
-            System.out.println("GatewayClient exception: " + e.getMessage());
-            return null;
+        while(true){
+            try {
+                GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
+                DELIMITER = gateway.getDelimiter();
+                crawlingMaxDepth = gateway.getCrawlingMaxDepth();
+                multicastAddress = gateway.getMulticastAddress();
+                port = gateway.getPort();
+                return gateway;
+            } catch (Exception e) {
+                System.out.println("Failed to connect to Gateway! Retrying in " + retryDelay + " seconds...");
+                try{
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException ignored){
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+
+            }
         }
     }
 
@@ -311,7 +348,26 @@ public class Downloader{
     public static void main(String[] args) {
         log("UP!");
 
-        // setup gateway RMI
+        try{
+            String gatewayHost = DownloaderConfigLoader.getProperty("gateway.host");
+            if(gatewayHost == null){
+                System.err.println("Gateway Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            String gatewayServiceName = DownloaderConfigLoader.getProperty("gateway.serviceName");
+            if(gatewayServiceName == null){
+                System.err.println("Gateway Service Name property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+
+        } catch (DownloaderConfigLoader.ConfigurationException e) {
+            System.err.println("Failed to load configuration file: " + e.getMessage());
+            System.err.println("Exiting...");
+        }
+
+            // setup gateway RMI
         gatewayRemote = connectToGatewayRMI();
         if(gatewayRemote == null) System.exit(1);
 

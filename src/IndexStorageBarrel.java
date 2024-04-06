@@ -14,22 +14,52 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Collectors;
+
+
+class BarrelConfigLoader {
+    private static final Properties properties = new Properties();
+
+    public static class ConfigurationException extends RuntimeException {
+        public ConfigurationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    static{
+        loadProperties();
+    }
+
+    private static void loadProperties(){
+        String filePath = "config/barrel.properties";
+        try (InputStream input = new FileInputStream(filePath)){
+            properties.load(input);
+        } catch (IOException e){
+            throw new ConfigurationException("Failed to load configuration properties", e);
+        }
+    }
+
+    public static String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+}
+
+
 
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
     private static AdaptiveRadixTree art = new AdaptiveRadixTree();
     public static final UUID uuid = UUID.randomUUID();
-    private static final String host = "localhost";
-    private static final String barrelRMIEndpoint = "//" + host + "/IndexStorageBarrel-" + uuid.toString();
+    private static String barrelRMIEndpoint;
     private static MulticastSocket socket;
     private static String multicastAddress;
     private static final int HELPER_THREADS_NUM = 16;
     private static int port;
-    private static int rmiPort; // TODO maybe get this from gateway?
     protected static final int maxRetries = 5;
     private static final int retryDelay = 1000; // 1 second
     private static final int exportationDelay = 60000; // 60 seconds
     protected static char DELIMITER;
     protected static GatewayRemote gatewayRemote;
+    private static String gatewayEndpoint;
     private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(HELPER_THREADS_NUM);
     private static final ThreadPoolExecutor fixedThreadPoolExecutor = (ThreadPoolExecutor) fixedThreadPool;
     protected static final AtomicInteger waitingThreadsNum = new AtomicInteger(0);
@@ -292,7 +322,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
     private static GatewayRemote connectToGatewayRMI(){
         try {
-            GatewayRemote gateway = (GatewayRemote) Naming.lookup("//localhost/GatewayService");
+            GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
             DELIMITER = gateway.getDelimiter();
             multicastAddress = gateway.getMulticastAddress();
             port = gateway.getPort();
@@ -337,7 +367,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
             try {
                 gatewayRemote.registerBarrel(barrelRMIEndpoint);
-                rmiPort = gatewayRemote.getPort();
+                //rmiPort = gatewayRemote.getPort();
                 registered = true;
                 break;
             } catch( ConnectException e){
@@ -427,7 +457,33 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     public static void main(String[] args){
         log("UP!");
 
-        // setup gateway RMI
+        try{
+            String gatewayHost = BarrelConfigLoader.getProperty("gateway.host");
+            if(gatewayHost == null){
+                System.err.println("Gateway Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+            String gatewayServiceName = BarrelConfigLoader.getProperty("gateway.serviceName");
+            if(gatewayServiceName == null){
+                System.err.println("Gateway Service Name property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            gatewayEndpoint = "//"+gatewayHost+"/"+gatewayServiceName;
+
+            String barrelHost = BarrelConfigLoader.getProperty("barrel.host");
+            if(barrelHost == null){
+                System.err.println("Barrel Host property not found in property file! Exiting...");
+                System.exit(1);
+            }
+
+            barrelRMIEndpoint = "//"+barrelHost+"/IndexStorageBarrel-"+uuid.toString();
+        } catch (BarrelConfigLoader.ConfigurationException e) {
+            System.err.println("Failed to load configuration file: " + e.getMessage());
+            System.err.println("Exiting...");
+        }
+
+            // setup gateway RMI
         gatewayRemote = null;
         log("Connecting to gateway...");
         while(gatewayRemote == null){
@@ -464,7 +520,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         log("Successfully joined multicast group!");
 
         for(int i=0; i<HELPER_THREADS_NUM; i++){
-            //fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
+            fixedThreadPool.execute(IndexStorageBarrel::messagesParser);
         }
 
         new Thread(IndexStorageBarrel::periodicBarrelExportation).start();
@@ -710,7 +766,7 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
     // TODO return the results based on the popularity instead of just all (also, group them by 10)
     @Override
-    public ArrayList<ArrayList<String>> searchWord(String word){
+    public ArrayList<ArrayList<String>> searchWord(String word, int page, int pageSize){
         if(word == null) return null;
         PriorityQueue<ArrayList<String>> results = new PriorityQueue<>(new Comparator<ArrayList<String>>() {
             @Override
@@ -725,10 +781,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         ArrayList<Long> linkIndices = getLinkIndices(word);
         if(linkIndices == null || linkIndices.isEmpty()) return null;
 
+        int numResults = 0;
         for(long linkIndex : linkIndices){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
+            if(pair == null) continue;
             ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+            if(parsedUrl == null) continue;
+
+            numResults++;
 
             result.add(parsedUrl.url);
             result.add(parsedUrl.title);
@@ -736,18 +797,26 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
             results.offer(result);
         }
+        int totalPagesNumber = numResults/pageSize;
 
         ArrayList<ArrayList<String>> sortedResults = new ArrayList<>();
         while (!results.isEmpty()) {
             sortedResults.add(results.poll());  // Retrieve and remove the head of this queue
         }
 
-        return sortedResults;
+        if(sortedResults.size() < page*pageSize) return null;
+
+        ArrayList<ArrayList<String>> pageResults = sortedResults.subList(page*pageSize, Math.min(sortedResults.size(), page*pageSize+pageSize))
+                .stream()
+                .map(ArrayList::new)
+                .collect(Collectors.toCollection(ArrayList::new));
+        pageResults.add(new ArrayList<>(List.of(String.valueOf(totalPagesNumber))));
+        return pageResults;
     }
 
 
     @Override
-    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words){
+    public ArrayList<ArrayList<String>> searchWordSet(ArrayList<String> words, int page, int pageSize){
         if(words == null || words.isEmpty()) return null;
 
         ArrayList<ArrayList<Long>> linkIndices = new ArrayList<>();
@@ -778,23 +847,35 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
             }
         });
 
+        int numResults = 0;
         for(long linkIndex : commonElements){
             ArrayList<String> result = new ArrayList<>();
             ParsedUrlIdPair pair = idToUrlKeyPairMap.get(linkIndex);
+            if(pair == null) continue;
             ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+            if(parsedUrl == null) continue;
+
+            numResults++;
+
             result.add(parsedUrl.url);
             result.add(parsedUrl.title);
             result.add(parsedUrl.description);
 
             results.offer(result);
         }
+        int totalPagesNumber = numResults/pageSize;
 
         ArrayList<ArrayList<String>> sortedResults = new ArrayList<>();
         while (!results.isEmpty()) {
             sortedResults.add(results.poll());
         }
 
-        return sortedResults;
+        ArrayList<ArrayList<String>> pageResults = sortedResults.subList(page*pageSize, page*pageSize+pageSize)
+                .stream()
+                .map(ArrayList::new)
+                .collect(Collectors.toCollection(ArrayList::new));
+        pageResults.add(new ArrayList<>(List.of(String.valueOf(totalPagesNumber))));
+        return pageResults;
     }
 
 
