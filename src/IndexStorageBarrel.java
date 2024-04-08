@@ -17,10 +17,22 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
 
+/**
+ * Class to read properties from the barrel property file.
+ */
 class BarrelConfigLoader {
     private static final Properties properties = new Properties();
 
+    /**
+     * Configuration exception that extends runtime exception.
+     */
     public static class ConfigurationException extends RuntimeException {
+        /**
+         * Instantiates a new Configuration exception.
+         *
+         * @param message the message
+         * @param cause   the cause
+         */
         public ConfigurationException(String message, Throwable cause) {
             super(message, cause);
         }
@@ -30,6 +42,11 @@ class BarrelConfigLoader {
         loadProperties();
     }
 
+
+    /**
+     * Load properties from the file, in case it exists.
+     * If not or if there is an error reading it, throw a Configuration Exception
+     */
     private static void loadProperties(){
         String filePath = "config/barrel.properties";
         try (InputStream input = new FileInputStream(filePath)){
@@ -39,43 +56,141 @@ class BarrelConfigLoader {
         }
     }
 
+    /**
+     * Gets property.
+     *
+     * @param key the key
+     * @return the property
+     */
     public static String getProperty(String key) {
         return properties.getProperty(key);
     }
 }
 
 
-
+/**
+ * IndexStorageBarrel Class.
+ */
 public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStorageBarrelRemote{
+    /**
+     * Verbosity variable.
+     * If true, the configuration values are shown, otherwise not.
+     */
     private static boolean verbosity = false; // default
-    private static AdaptiveRadixTree art = new AdaptiveRadixTree();
+    /**
+     * Adaptive Radix Tree serving as the inverted index
+     */
+    private static final AdaptiveRadixTree art = new AdaptiveRadixTree();
+    /**
+     * UUID
+     */
     public static final UUID uuid = UUID.randomUUID();
+    /**
+     * Barrel RMI Endpoint that will be built using the provided
+     * host and service name on the properties file
+     */
     private static String barrelRMIEndpoint;
+    /**
+     * Multicast Socket that will hold the connection to the downloaders
+     */
     private static MulticastSocket socket;
+    /**
+     * Multicast Address that will be got from the Gateway using RMI
+     */
     private static String multicastAddress;
+    /**
+     * Multicast Port that will be got from the Gateway using RMI
+     */
+    private static int multicastPort;
+    /**
+     * Number of helper threads
+     * Defaults to 16 if it's not on the properties or if it's invalid
+     */
     private static int helperThreadsNum = 16; // default 16 threads
-    private static int port;
+
+    /**
+     * Max number of retries
+     * Defaults to 5 if it's not on the properties file or if it's invalid
+     */
     protected static int maxRetries = 5; // default 5 retries
+    /**
+     * Delay retries
+     * Defaults to 1000 if it's not on the properties file or if it's invalid
+     */
     private static int retryDelay = 1000; // default 1 second
+    /**
+     * Delay between exportations
+     * Defaults to 60000 if it's not on the properties file or if it's invalid
+     */
     private static int exportationDelay = 60000; // default 60 seconds
+    /**
+     * Parsing delimiter used to parse the data that comes from the multicast.
+     * Will be got from the Gateway using RMI
+     */
     protected static char DELIMITER;
+    /**
+     * Gateway Remote interface
+     */
     protected static GatewayRemote gatewayRemote;
+    /**
+     * Gateway RMI Endpoint that will be built using the provided
+     * host and service name on the properties file
+     */
     private static String gatewayEndpoint;
+    /**
+     * Fixed Thread Pool that will be used to run the helper threads
+     * The number of threads comes from the helperThreadsNum variable loaded from
+     * the properties files
+     */
     private static final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(helperThreadsNum);
+    /**
+     * Thread Pool Executor, later used to get the number of busy threads
+     */
     private static final ThreadPoolExecutor fixedThreadPoolExecutor = (ThreadPoolExecutor) fixedThreadPool;
+    /**
+     * Number of threads waiting for work in the messages queue
+     */
     protected static final AtomicInteger waitingThreadsNum = new AtomicInteger(0);
+    /**
+     * Queue that will contain work for the threads to do
+     */
     protected static BlockingQueue<String> multicastMessagesQueue = new LinkedBlockingQueue<>();
+    /**
+     * <H2>Concurrent Hash Map that maps a ParsedUrlIdPair to a ParsedUrl</H2>
+     * <H3>ParsedUrlIdPair</H3>
+     * The ParsedUrlIdPair is an object that holds the url and the id of a Parsed Url object. This is needed
+     * to be able to find a ParsedUrl object using either an id or an url
+     * <H3>ParsedUrl</H3>
+     * The ParsedUrl object is an object that holds the url and the id of a Parsed Url, among other properties
+     */
     protected static ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> parsedUrlsMap = new ConcurrentHashMap<>();
+    /**
+     * <H2>Concurrent Hash Map that maps a String (url) to a ParsedUrlIdPair</H2>
+     * The retrieved ParsedUrlIdPair will be later used to retrieve the corresponding ParsedUrl
+     */
     protected static ConcurrentHashMap<String, ParsedUrlIdPair> urlToUrlKeyPairMap = new ConcurrentHashMap<>();
+    /**
+     * <H2>Concurrent Hash Map that maps a Long (id) to a ParsedUrlIdPair</H2>
+     * The retrieved ParsedUrlIdPair will be later used to retrieve the corresponding ParsedUrl
+     */
     protected static ConcurrentHashMap<Long, ParsedUrlIdPair> idToUrlKeyPairMap = new ConcurrentHashMap<>();
 
+    /**
+     * Instantiates a new Index storage barrel.
+     *
+     * @throws RemoteException RMI Exception
+     */
     protected IndexStorageBarrel() throws RemoteException {}
 
 
+    /**
+     * Get most available barrel from the gateway
+     * @return most available barrel if successful, null otherwise
+     */
     private static String getMostAvailableBarrelFromGateway(){
         String bestBarrel = "";
         boolean got = false;
-        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
+        for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) { // try the call maxRetries times
             try {
                 bestBarrel = gatewayRemote.getMostAvailableBarrelRemote(barrelRMIEndpoint);
                 got = true;
@@ -94,15 +209,19 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Sync to the most available barrel
+     * @return true if successful, false otherwise
+     */
     private static boolean syncBarrel(){
         String referenceBarrel = "";
 
-        referenceBarrel = getMostAvailableBarrelFromGateway();
+        referenceBarrel = getMostAvailableBarrelFromGateway(); // get the most available barrel from the gateway
         System.out.println(referenceBarrel);
-        if(referenceBarrel == null || referenceBarrel.isEmpty() || referenceBarrel.equals(barrelRMIEndpoint)) return false;
+        if(referenceBarrel == null || referenceBarrel.isEmpty() || referenceBarrel.equals(barrelRMIEndpoint)) return false; // if no barrel is available, return false
 
-        IndexStorageBarrelRemote barrel = connectToBarrelRMI(referenceBarrel);
-        if (barrel == null) return false;
+        IndexStorageBarrelRemote barrel = connectToBarrelRMI(referenceBarrel); // try to connect to the choosen barrel RMI
+        if (barrel == null) return false; // if connection unsuccessful, return false
 
         log("Syncing Barrel with " + referenceBarrel);
 
@@ -140,6 +259,11 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Get multicast message
+     * Receives the multicast message into a byte array with the maximum size of a UDP packet (65507 bytes)
+     * @return message if successful, null otherwise
+     */
     private static String getMulticastMessage(){
         byte[] dataBuffer = new byte[65507];
         DatagramPacket packet = new DatagramPacket(dataBuffer, dataBuffer.length);
@@ -162,13 +286,17 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Setup the multicast connection
+     * @return socket if successful, null otherwise
+     */
     private static MulticastSocket setupMulticastConn(){
         MulticastSocket socket = null;
         boolean isConnected = false;
 
-        while (!isConnected) {
+        while (!isConnected) { // try to connect to the multicast until succesful
             try {
-                socket = new MulticastSocket(port);
+                socket = new MulticastSocket(multicastPort);
                 InetAddress group = InetAddress.getByName(multicastAddress);
                 socket.joinGroup(group);
                 isConnected = true;
@@ -196,6 +324,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Export the ART from memory into disk while catching the necessary exceptions
+     * @param art tree
+     */
     private static void exportART(AdaptiveRadixTree art){
         try{
             art.exportART();
@@ -207,6 +339,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Import the ART from disk into memory while catching the necessary exceptions
+     * @return true if successful, false otherwise
+     */
     private static boolean importART(){
         try{
             art.importART();
@@ -221,6 +357,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Get the ART.
+     * Used to return the tree to a barrel that wants to sync
+     * First iot exports to the disk and then reads it into a byte array and returns it
+     * @return bytes of the tree
+     */
     @Override
     public byte[] getArt(){
         try {
@@ -236,28 +378,46 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
     }
 
+
+    /**
+     * Get the Parsed Urls Hash Map
+     * Used to return the Parsed Urls Hash Map to a barrel that wants to sync
+     * @return parsedUrlsMap
+     */
     @Override
     public ConcurrentHashMap<ParsedUrlIdPair, ParsedUrl> getParsedUrlsMap(){
-        System.out.println(parsedUrlsMap.size());
         return parsedUrlsMap;
     }
 
+
+    /**
+     * Get the Url to Url Key Pair Map
+     * Used to return the Url to Url Key Pair Map to a barrel that wants to sync
+     * @return urlToUrlKeyPairMap
+     */
     @Override
     public ConcurrentHashMap<String, ParsedUrlIdPair> getUrlToUrlKeyPairMap(){
-        System.out.println(urlToUrlKeyPairMap.size());
         return urlToUrlKeyPairMap;
     }
 
+
+    /**
+     * Get the Id to Url Key Pair Map
+     * Used to return the Id to Url Key Pair Map to a barrel that wants to sync
+     * @return idToUrlKeyPairMap
+     */
     @Override
     public ConcurrentHashMap<Long, ParsedUrlIdPair> getIdToUrlKeyPairMap(){
-        System.out.println(idToUrlKeyPairMap.size());
         return idToUrlKeyPairMap;
     }
 
 
-    /* Import the ART and the Maps that store the info about the urls
-    *  If any of these fails to import, return (clearing the successfully imported ones)
-    *  so the barrel works as intended without residual information */
+     /**
+     * Import the ART and the Maps that store the info about the urls
+     * If any of these fails to import, return (clearing the successfully imported ones)
+     * so the barrel works as intended without residual information
+     * @return true if successful, false otherwise
+     */
     private static boolean importSerializedInfo(){
         log("Importing ART...");
         if(!importART()){
@@ -295,7 +455,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-
+    /**
+     * Export all the Maps that store the info about the urls and the ART
+     */
     private static void exportDeserializedInfo(){
         log("Exporting Parsed Urls Hash Map...");
         serializeMap(parsedUrlsMap, "parsedUrlsMap.ser");
@@ -307,13 +469,17 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Connect to gateway RMI
+     * @return the gateway if successful, null otherwise
+     */
     private static GatewayRemote connectToGatewayRMI(){
         try {
             System.out.println(gatewayEndpoint);
             GatewayRemote gateway = (GatewayRemote) Naming.lookup(gatewayEndpoint);
             DELIMITER = gateway.getParsingDelimiter();
             multicastAddress = gateway.getMulticastAddress();
-            port = gateway.getMulticastPort();
+            multicastPort = gateway.getMulticastPort();
             return gateway;
         } catch (Exception e) {
             System.out.println("GatewayClient exception: " + e.getMessage());
@@ -322,6 +488,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Reconnect to gateway RMI
+     */
     private static void reconnectToGatewayRMI(){
         log("Reconnecting to gateway...");
         gatewayRemote = null;
@@ -339,6 +508,11 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Connect to barrel RMI
+     * @param barrelEndpoint barrel endpoint
+     * @return the barrel remote interface if successful, null otherwise
+     */
     private static IndexStorageBarrelRemote connectToBarrelRMI(String barrelEndpoint){
         try {
             return (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
@@ -349,13 +523,15 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Register barrel in gateway
+     */
     private static void registerBarrel(){
         // register barrel in gateway
         boolean registered = false;
         for (int i = 0; i < IndexStorageBarrel.maxRetries; i++) {
             try {
                 gatewayRemote.registerBarrel(barrelRMIEndpoint);
-                //rmiPort = gatewayRemote.getPort();
                 registered = true;
                 break;
             } catch( ConnectException e){
@@ -371,6 +547,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Setup barrel RMI
+     * @return true if successful, false otherwise
+     */
     private static boolean setupRMI() {
         try {
             IndexStorageBarrel barrel = new IndexStorageBarrel();
@@ -384,7 +564,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
-
+    /**
+     * Exit function to close program
+     */
     private static void exit(){
         // unregister barrel in gateway
         boolean unregistered = false;
@@ -419,6 +601,10 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Calculate availability
+     * @return availability
+     */
     @Override
     public double getAvailability() {
         int totalThreads = fixedThreadPoolExecutor.getCorePoolSize();
@@ -428,6 +614,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Function responsible for the periodic exportation of the barrel data structures
+     */
     private static void periodicBarrelExportation(){
         while(!Thread.currentThread().isInterrupted()){
             try {
@@ -442,6 +631,9 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Function that loads all the properties from the properties file
+     */
     private static void loadConfig(){
         try{
             // load verbosity
@@ -575,6 +767,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
         if(verbosity) System.out.println("-------------------------\n\n");
     }
+
+    /**
+     * Entry point of the IndexStorageBarrel.
+     *
+     * @param args args
+     */
     public static void main(String[] args){
         log("UP!");
 
@@ -638,18 +836,34 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Parse message, splitting it by delimiter.
+     * @param message
+     * @return
+     */
     private static ArrayList<String> parseMessage(String message){
-        //System.out.println("UNPARSED MESSAGE: " + message);
         String[] splitMessage = message.split(Pattern.quote(String.valueOf(DELIMITER)));
-        //System.out.println("PARSED MESSAGE: " + Arrays.toString(splitMessage));
         return new ArrayList<>(Arrays.asList(splitMessage));
     }
 
+
+    /**
+     * Check if the provided url has already been parsed.
+     * @param url url to check
+     * @return true if the url has been parsed, false otherwise
+     */
     private static boolean hasUrlBeenParsed(String url){
         return IndexStorageBarrel.urlToUrlKeyPairMap.containsKey(url);
     }
 
 
+    /**
+     * Create and add a parsed url to the hash maps, with the provided parameters.
+     * @param url url
+     * @param title title
+     * @param description description
+     * @return id of the created url if successful, -1 otherwise
+     */
     private static long addParsedUrl(String url, String title, String description){
         /* try to increment and retrieve the number of parsed urls */
         long id = -1;
@@ -683,16 +897,24 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Index url into data structures, inserting every word in the tree
+     * and inserting the url in the hash maps if not already there
+     * @param parsedMessage parsed message
+     */
     private static void indexUrl(ArrayList<String> parsedMessage){
         if(parsedMessage.size() < 4) return;
 
         String url = parsedMessage.get(0);
         if (hasUrlBeenParsed(url)) { // if url has already been parsed
             ParsedUrlIdPair pair = urlToUrlKeyPairMap.get(url);
+            if(pair == null) return;
             ParsedUrl parsedUrl = parsedUrlsMap.get(pair);
+            if(parsedUrl == null) return;
+
             long id = parsedUrl.id;
 
-            // make sure the title and description are not null (it can happen when the
+            // making sure the title and description are not null (it can happen when the
             // url is created whenever processing a father url and that url doesn't exist,
             // so it's object is created with these 2 fields as null, because the title and description are not known at that time)
             if(parsedUrl.title == null) parsedUrl.title = parsedMessage.get(1);
@@ -722,35 +944,41 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Process father urls
+     *
+     * @param parsedMessage parsed message
+     */
     private static void processFatherUrls(ArrayList<String> parsedMessage){
         if(parsedMessage.size() < 3) return;
 
         String fatherUrl = parsedMessage.get(1);
-        //System.out.println("FATHER URL: " + fatherUrl);
         Long fatherUrlId;
-        if(hasUrlBeenParsed(fatherUrl)){
+        if(hasUrlBeenParsed(fatherUrl)){ // if the father url has already been parsed, get its object
             ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(fatherUrl);
             if(urlIdPair == null) return;
             ParsedUrl parsedFatherUrl = parsedUrlsMap.get(urlIdPair);
             if(parsedFatherUrl == null) return;
+
             fatherUrlId = parsedFatherUrl.id;
-        } else {
+        } else { // if the father url hasn't been parsed yet, parse it
             fatherUrlId = addParsedUrl(fatherUrl, null, null);
             if(fatherUrlId == -1) return;
         }
 
-        for(int i=2; i<parsedMessage.size(); i++){
+        for(int i=2; i<parsedMessage.size(); i++){ // go over all the child urls
             String childUrl = parsedMessage.get(i);
 
-            if(hasUrlBeenParsed(childUrl)){
+            if(hasUrlBeenParsed(childUrl)){ // if the child url has already been parsed
                 ParsedUrlIdPair urlIdPair = urlToUrlKeyPairMap.get(childUrl);
                 if(urlIdPair == null) continue;
                 ParsedUrl parsedChildUrl = parsedUrlsMap.get(urlIdPair);
                 if(parsedChildUrl == null) continue;
-                parsedChildUrl.addFatherUrl(fatherUrlId);
+
+                parsedChildUrl.addFatherUrl(fatherUrlId); // add father url to the child url
 
                 System.out.println("Added " + fatherUrl + " as a father of existing " + childUrl);
-            } else {
+            } else { // if the child url hasn't been parsed yet, parse it
                 long id = addParsedUrl(childUrl, null, null);
                 if(id == -1) return;
 
@@ -758,7 +986,8 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
                 if(urlIdPair == null) continue;
                 ParsedUrl parsedChildUrl = parsedUrlsMap.get(urlIdPair);
                 if(parsedChildUrl == null) continue;
-                parsedChildUrl.addFatherUrl(fatherUrlId);
+
+                parsedChildUrl.addFatherUrl(fatherUrlId); // add father url to the child url
                 System.out.println("Added " + fatherUrl + " as a father of newly created " + childUrl);
             }
         }
@@ -849,19 +1078,34 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Log function
+     * @param text log text
+     */
     protected static void log(String text){
         System.out.println("[BARREL " + uuid.toString().substring(0, 8) + "] " + text);
     }
 
+    /**
+     * Insert.
+     *
+     * @param word      the word
+     * @param linkIndex the link index
+     */
     public void insert(String word, long linkIndex){
         art.insert(word, linkIndex);
     }
 
+    /**
+     * Get link indices array list.
+     *
+     * @param word the word
+     * @return the array list
+     */
     public ArrayList<Long> getLinkIndices(String word){
         return art.find(word);
     }
 
-    // TODO return the results based on the popularity instead of just all (also, group them by 10)
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word, int page, int pageSize){
         if(word == null) return null;
@@ -976,6 +1220,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     }
 
 
+    /**
+     * Serialize map.
+     *
+     * @param object   the object
+     * @param filename the filename
+     */
     public static void serializeMap(Object object, String filename) {
         try (FileOutputStream fileOut = new FileOutputStream(filename);
              ObjectOutputStream out = new ObjectOutputStream(fileOut)) {
@@ -985,6 +1235,12 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
         }
     }
 
+    /**
+     * Deserialize map object.
+     *
+     * @param filename the filename
+     * @return the object
+     */
     public static Object deserializeMap(String filename) {
         Object object = null;
         try (FileInputStream fileIn = new FileInputStream(filename);

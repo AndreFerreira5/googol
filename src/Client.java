@@ -10,10 +10,22 @@ import java.util.Properties;
 import java.util.Scanner;
 
 
+/**
+ * The type Client config loader.
+ */
 class ClientConfigLoader {
     private static final Properties properties = new Properties();
 
+    /**
+     * The type Configuration exception.
+     */
     public static class ConfigurationException extends RuntimeException {
+        /**
+         * Instantiates a new Configuration exception.
+         *
+         * @param message the message
+         * @param cause   the cause
+         */
         public ConfigurationException(String message, Throwable cause) {
             super(message, cause);
         }
@@ -32,11 +44,20 @@ class ClientConfigLoader {
         }
     }
 
+    /**
+     * Gets property.
+     *
+     * @param key the key
+     * @return the property
+     */
     public static String getProperty(String key) {
         return properties.getProperty(key);
     }
 }
 
+/**
+ * The type Client.
+ */
 public class Client {
     private static boolean verbosity = false; // default
     private static int maxRetries = 5; // default
@@ -214,11 +235,9 @@ public class Client {
             System.out.println("-----PAGE " + (page+1) + " of " + totalPagesNum + "-----");
             if(showFatherUrls){
                 if(!didPageChange && fatherUrls != null){
-                    System.out.println("PAGE DID NOT CHANGE AND FATHER URLS ARE NOT NULL");
-                    System.out.println("FATHER URLS: " + fatherUrls);
                     int count = 0;
                     for(ArrayList<String> url : response){
-                        if(count == pageSize) continue;
+                        if(count == pageSize || url.size() < 3) continue;
                         System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                         System.out.println(fatherUrls.get(count).size() + " Father URLs: ");
                         for(String fatherUrl : fatherUrls.get(count)){
@@ -227,10 +246,6 @@ public class Client {
                         count++;
                     }
                 } else {
-                    if(didPageChange)
-                        System.out.println("PAGE DID CHANGE");
-                    if(fatherUrls == null)
-                        System.out.println("FATHER URLS ARE NULL");
                     ArrayList<String> pageLines = new ArrayList<>(); // array that contains the urls on the page
                     fatherUrls = new ArrayList<>(); // array that contains arrays that contains all the father urls of the urls on the page
                     for(ArrayList<String> url : response){
@@ -254,7 +269,7 @@ public class Client {
                         System.out.println("Error retrieving father urls!");
                         int count = 0;
                         for(ArrayList<String> url : response){
-                            if(count == pageSize) continue;
+                            if(count == pageSize || url.size() < 3) continue;
                             System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                             count++;
                         }
@@ -262,14 +277,14 @@ public class Client {
                         System.out.println("No father urls found!");
                         int count = 0;
                         for(ArrayList<String> url : response){
-                            if(count == pageSize) continue;
+                            if(count == pageSize || url.size() < 3) continue;
                             System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                             count++;
                         }
                     } else {
                         int count = 0;
                         for(ArrayList<String> url : response){
-                            if(count == pageSize) continue;
+                            if(count == pageSize || url.size() < 3) continue;
                             System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                             System.out.println(fatherUrls.get(count).size() + " Father URLs: ");
                             for(String fatherUrl : fatherUrls.get(count)){
@@ -282,7 +297,7 @@ public class Client {
             } else {
                 int count = 0;
                 for(ArrayList<String> url : response){
-                    if(count == pageSize) continue;
+                    if(count == pageSize || url.size() < 3) continue;
                     System.out.println(start+1+count + ". " + url.get(0) + (url.get(1) == null || url.get(1).isEmpty() ? "" : " - ") + (url.get(2) == null || url.get(2).isEmpty() ? "" : " - " + url.get(2)));
                     count++;
                 }
@@ -484,6 +499,12 @@ public class Client {
 
         if(verbosity) System.out.println("-------------------------\n\n");
     }
+
+    /**
+     * Main.
+     *
+     * @param args the args
+     */
     public static void main(String[] args){
         loadConfig();
 

@@ -20,10 +20,22 @@ import org.jsoup.select.Elements;
 import org.jsoup.nodes.Document;
 
 
+/**
+ * The type Downloader config loader.
+ */
 class DownloaderConfigLoader{
     private static final Properties properties = new Properties();
 
+    /**
+     * The type Configuration exception.
+     */
     public static class ConfigurationException extends RuntimeException {
+        /**
+         * Instantiates a new Configuration exception.
+         *
+         * @param message the message
+         * @param cause   the cause
+         */
         public ConfigurationException(String message, Throwable cause) {
             super(message, cause);
         }
@@ -42,12 +54,21 @@ class DownloaderConfigLoader{
         }
     }
 
+    /**
+     * Gets property.
+     *
+     * @param key the key
+     * @return the property
+     */
     public static String getProperty(String key) {
         return properties.getProperty(key);
     }
 }
 
 
+/**
+ * The type Downloader.
+ */
 public class Downloader{
     private static boolean verbosity = false; // default
     private static final UUID uuid = UUID.randomUUID();
@@ -69,6 +90,8 @@ public class Downloader{
 
     private static ArrayList<String>[] parseRawUrl(RawUrl url){
         String link = url.url;
+        if(link.contains(String.valueOf(DELIMITER))) return null;
+
         int depth = url.depth;
         if(depth > crawlingMaxDepth) { // if depth exceeds crawling max depth skip
             return null;
@@ -83,6 +106,8 @@ public class Downloader{
                     .ignoreHttpErrors(true)
                     .get();
 
+            //System.out.println("Url language: " + doc.select("html").attr("lang"));
+
             // get all urls inside the url and put it in the queue
             Elements subUrls = doc.select("a[href]");
             ArrayList<RawUrl> rawUrls = new ArrayList<>();
@@ -92,7 +117,8 @@ public class Downloader{
 
             for(Element subUrl : subUrls){
                 String href = subUrl.attr("abs:href");
-                
+                if(href.contains(String.valueOf(DELIMITER))) continue;
+
                 fatherUrls.add(href + DELIMITER);
                 try{
                     if(depth+1 > crawlingMaxDepth) continue;
@@ -112,9 +138,26 @@ public class Downloader{
             }
             if(!added) log("Error adding urls to urls deque. Proceeding...");
 
+            /*
+            String pageLang = doc.select("html").attr("lang");
+            if(pageLang.isEmpty()){
+                Elements metaTags = doc.getElementsByTag("meta");
+                for (Element metaTag : metaTags) {
+                    String httpEquiv = metaTag.attr("http-equiv");
+                    String content = metaTag.attr("content");
+                    if ("content-language".equalsIgnoreCase(httpEquiv)) {
+                        pageLang = content;
+                        break;
+                    }
+            }
+
+            String[] parts = pageLang.split("[-_]", 2); // Splits on hyphen or underscore
+            String languageCode = parts[0]; // The language code (mandatory)
+            String countryCode = parts.length > 1 ? parts[1] : "";
+*/
             // get page title, description, keywords and text
-            String title = doc.title();
-            String description = doc.select("meta[name=description]").attr("content");
+            String title = doc.title().replaceAll(String.valueOf(DELIMITER), "");
+            String description = doc.select("meta[name=description]").attr("content").replaceAll(String.valueOf(DELIMITER), "");
             //String keywords = doc.select("meta[name=keywords]").attr("content");
             String text = doc.body().text().replaceAll(String.valueOf(DELIMITER), ""); // remove | from the text to prevent conflicts
 

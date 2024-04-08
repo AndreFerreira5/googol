@@ -1,12 +1,21 @@
 import java.io.Serial;
 import java.io.Serializable;
 
+/**
+ * The type Parsed url id pair.
+ */
 public class ParsedUrlIdPair implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
     private final String url;
     private final Long id;
 
+    /**
+     * Instantiates a new Parsed url id pair.
+     *
+     * @param url the url
+     * @param key the key
+     */
     public ParsedUrlIdPair(String url, long key){
         this.url = url;
         this.id = key;
@@ -25,10 +34,20 @@ public class ParsedUrlIdPair implements Serializable {
         return 31 * url.hashCode() + Long.hashCode(id);
     }
 
+    /**
+     * Get url string.
+     *
+     * @return the string
+     */
     public String getUrl(){
         return url;
     }
 
+    /**
+     * Get id long.
+     *
+     * @return the long
+     */
     public Long getId(){
         return id;
     }
