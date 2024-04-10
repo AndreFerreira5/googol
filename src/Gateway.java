@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.rmi.Naming;
+import java.rmi.RMISecurityManager;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
@@ -971,6 +972,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * @throws InterruptedException Interrupted exception
      */
     public static void main(String[] args) throws InterruptedException {
+        System.getProperties().put("java.security.policy", "server.policy");
+        System.setSecurityManager(new RMISecurityManager());
+
         loadConfig(); // load properties from properties file
 
         if(!setupGatewayRMI()) System.exit(1); // setup gateway RMI, exit if failed
