@@ -132,6 +132,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * If true, the configuration values are shown, otherwise not.
      */
     private static boolean verbosity = false;
+    private static String host;
     /**
      * Port used in the Gateway RMI.
      * Defaults to 1099 if it's not on the properties file or if it's invalid.
@@ -825,11 +826,12 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
             if(verbosity) System.out.println("----------CONFIG----------");
 
             // load gateway host
-            String host = GatewayConfigLoader.getProperty("gateway.host");
-            if(host == null){
+            String hostConfig = GatewayConfigLoader.getProperty("gateway.host");
+            if(hostConfig == null){
                 System.err.println("Gateway Host property not found in property file! Exiting...");
                 System.exit(1);
             }
+            host = hostConfig;
             if(verbosity) System.out.println("Host: " + host);
 
             // load gateway rmi service name
@@ -972,10 +974,13 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * @throws InterruptedException Interrupted exception
      */
     public static void main(String[] args) throws InterruptedException {
-        System.getProperties().put("java.security.policy", "server.policy");
-        System.setSecurityManager(new RMISecurityManager());
-
         loadConfig(); // load properties from properties file
+
+        // set security policies for RMI
+        System.getProperties().put("java.security.policy", "server.policy");
+        System.getProperties().put("java.rmi.server.hostname", host);
+        System.out.println(System.getProperties().toString());
+        System.setSecurityManager(new RMISecurityManager());
 
         if(!setupGatewayRMI()) System.exit(1); // setup gateway RMI, exit if failed
 
