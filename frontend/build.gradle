@@ -1,0 +1,22 @@
+plugins {
+    id 'java'
+}
+
+java {
+    group = 'com.googol.frontend'
+    version = '0.1.0'
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':backend')
+}
+
+test {
+    useJUnitPlatform()
+}

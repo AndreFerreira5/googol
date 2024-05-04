@@ -1,0 +1,121 @@
+plugins {
+    id 'java'
+}
+
+java {
+    group = 'com.googol.backend'
+    version = '0.1.0'
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.jsoup:jsoup:1.17.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register('gatewayJar', Jar) {
+    archiveBaseName.set('Gateway')
+    archiveVersion.set(version)
+    archiveClassifier.set('')
+
+    from (sourceSets.main.output) {
+        include 'com/googol/backend/gateway/**'
+        include 'com/googol/backend/strategy/**'
+        include 'com/googol/backend/model/RawUrl.class'
+        include 'com/googol/backend/storage/IndexStorageBarrelRemote.class'
+    }
+
+    manifest {
+        attributes(
+                'Main-Class': 'com.googol.backend.gateway.Gateway'
+        )
+    }
+
+    doFirst {
+        println 'Packing Gateway JAR with all necessary dependencies...'
+    }
+}
+
+tasks.register('clientJar', Jar) {
+    archiveBaseName.set('Client')
+    archiveVersion.set(version)
+    archiveClassifier.set('')
+
+    from (sourceSets.main.output) {
+        include 'com/googol/backend/client/**'
+        include 'com/googol/backend/gateway/GatewayRemote.java'
+    }
+
+    manifest {
+        attributes(
+                'Main-Class': 'com.googol.backend.client.Client'
+        )
+    }
+
+    doFirst {
+        println 'Packing Client JAR with all necessary dependencies...'
+    }
+}
+
+tasks.register('downloaderJar', Jar) {
+    archiveBaseName.set('Downloader')
+    archiveVersion.set(version)
+    archiveClassifier.set('')
+
+    from (sourceSets.main.output) {
+        include 'com/googol/backend/downloader/**'
+        include 'com/googol/backend/gateway/GatewayRemote.java'
+        include 'com/googol/backend/model/RawUrl.java'
+    }
+
+    manifest {
+        attributes(
+                'Main-Class': 'com.googol.backend.downloader.Downloader'
+        )
+    }
+
+    doFirst {
+        println 'Packing Downloader JAR with all necessary dependencies...'
+    }
+}
+
+tasks.register('barrelJar', Jar) {
+    archiveBaseName.set('IndexStorageBarrel')
+    archiveVersion.set(version)
+    archiveClassifier.set('')
+
+    from (sourceSets.main.output) {
+        include 'com/googol/backend/storage/**'
+        include 'com/googol/backend/gateway/GatewayRemote.java'
+        include 'com/googol/backend/tree/AdaptiveRadixTree.java'
+        include 'com/googol/backend/model/ParsedUrl.java'
+        include 'com/googol/backend/model/ParsedUrlIdPair.java'
+    }
+
+    manifest {
+        attributes(
+                'Main-Class': 'com.googol.backend.storage.IndexStorageBarrel'
+        )
+    }
+
+    doFirst {
+        println 'Packing Index Storage Barrel JAR with all necessary dependencies...'
+    }
+}
+
+tasks.register('pack') {
+    dependsOn 'gatewayJar', 'clientJar', 'downloaderJar', 'barrelJar'
+    doLast {
+        println 'All JARs have been packed.'
+    }
+}
