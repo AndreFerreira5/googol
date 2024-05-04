@@ -38,3 +38,6 @@ target/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# allow grade-wrapper.jar to be pushed for the workflows to work
+!gradle/wrapper/gradle-wrapper.jar
