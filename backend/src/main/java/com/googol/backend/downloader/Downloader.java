@@ -376,6 +376,7 @@ public class Downloader{
                 return gateway;
             } catch (Exception e) {
                 System.out.println("Failed to connect to Gateway! Retrying in " + retryDelay + " seconds...");
+                System.out.println("Error: " + e.getMessage());
                 try{
                     Thread.sleep(retryDelay);
                 } catch (InterruptedException ignored){

@@ -215,13 +215,12 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      */
     private static final HashMap<String, Integer> searchedStrings = new HashMap<>();
 
-
     /**
      * Instantiates a new Gateway.
      *
      * @throws RemoteException the remote exception
      */
-    protected Gateway() throws RemoteException {}
+    public Gateway() throws RemoteException {}
 
 
     /**

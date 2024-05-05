@@ -53,7 +53,8 @@ tasks.register('clientJar', Jar) {
 
     from (sourceSets.main.output) {
         include 'com/googol/backend/client/**'
-        include 'com/googol/backend/gateway/GatewayRemote.java'
+        include 'com/googol/backend/model/RawUrl.class'
+        include 'com/googol/backend/gateway/GatewayRemote.class'
     }
 
     manifest {
@@ -74,8 +75,13 @@ tasks.register('downloaderJar', Jar) {
 
     from (sourceSets.main.output) {
         include 'com/googol/backend/downloader/**'
-        include 'com/googol/backend/gateway/GatewayRemote.java'
-        include 'com/googol/backend/model/RawUrl.java'
+        include 'com/googol/backend/gateway/GatewayRemote.class'
+        include 'com/googol/backend/gateway/GatewayListener.class'
+        include 'com/googol/backend/model/RawUrl.class'
+    }
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 
     manifest {
@@ -96,10 +102,11 @@ tasks.register('barrelJar', Jar) {
 
     from (sourceSets.main.output) {
         include 'com/googol/backend/storage/**'
-        include 'com/googol/backend/gateway/GatewayRemote.java'
-        include 'com/googol/backend/tree/AdaptiveRadixTree.java'
-        include 'com/googol/backend/model/ParsedUrl.java'
-        include 'com/googol/backend/model/ParsedUrlIdPair.java'
+        include 'com/googol/backend/gateway/GatewayRemote.class'
+        include 'com/googol/backend/tree/**'
+        include 'com/googol/backend/model/RawUrl.class'
+        include 'com/googol/backend/model/ParsedUrl.class'
+        include 'com/googol/backend/model/ParsedUrlIdPair.class'
     }
 
     manifest {

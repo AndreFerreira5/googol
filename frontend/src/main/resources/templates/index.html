@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+        <title>Googol</title>
+    </head>
+    <body>
+        <div class="flex flex-col items-center justify-center h-screen">
+            <h1 class="text-5xl font-extrabold dark:text-white">Googol</h1>
+            <form id="searchForm">
+                <input class="border p-2 border-gray-300 rounded-full" type="text" id="searchQuery" placeholder="" name="query">
+                <button type="submit">Search</button>
+            </form>
+            <div id="searchResults"></div>
+            <div id="pageNavigators">
+                <button id="previousPage"> < </button>
+                <button id="nextPage"> > </button>
+            </div>
+            <div>
+                <a id="currentPage"></a>
+                <a>/</a>
+                <a id="lastPage"></a>
+            </div>
+        </div>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        <script th:src="@{/js/search.js}"></script>
+        <script th:src="@{/js/system-metrics.js}"></script>
+    </body>
+</html>
