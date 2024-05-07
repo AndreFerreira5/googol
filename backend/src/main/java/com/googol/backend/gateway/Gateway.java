@@ -214,6 +214,31 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * This is so the top 10 searches can be tracked.
      */
     private static final HashMap<String, Integer> searchedStrings = new HashMap<>();
+    private static final ArrayList<UpdateCallback> clients = new ArrayList<>();
+
+    @Override
+    public synchronized void registerUpdateCallback(UpdateCallback client) throws RemoteException {
+        clients.add(client);
+    }
+
+    @Override
+    public synchronized void unregisterUpdateCallback(UpdateCallback client) throws RemoteException {
+        clients.remove(client);
+    }
+
+    // notify all registered clients
+    private void notifyClients(ArrayList<String> message) {
+        synchronized (clients) {
+            for (UpdateCallback client : clients) {
+                try {
+                    client.onUpdate(message);
+                } catch (RemoteException e) {
+                    System.out.println("Error notifying client: " + e.getMessage());
+                }
+            }
+        }
+    }
+
 
     /**
      * Instantiates a new Gateway.
@@ -391,6 +416,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         barrelsOnline.put(barrelEndpoint, barrelEndpoint);
         barrelMetricsMap.put(barrelEndpoint, new BarrelMetrics());
         System.out.println("\nBarrel registered: " + barrelEndpoint);
+        notifyClients(getSystemInfo());
     }
 
 
@@ -405,6 +431,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         barrelsOnline.remove(barrelEndpoint);
         barrelMetricsMap.remove(barrelEndpoint);
         System.out.println("\nBarrel unregistered: " + barrelEndpoint);
+        notifyClients(getSystemInfo());
     }
 
 
@@ -678,6 +705,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         if(verbosity) System.out.println("Elapsed time: " + elapsedTime / 1_000_000_000.0 + "s");
 
         barrelMetricsMap.get(bestBarrel).updateMetrics(elapsedTime); // update barrel average time response
+        notifyClients(getSystemInfo());
         return response;
     }
 
@@ -715,10 +743,12 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         double elapsedTime = end - start;
 
         barrelMetricsMap.get(bestBarrel).updateMetrics(elapsedTime); // update barrel average time response
+        notifyClients(getSystemInfo());
         return response;
     }
 
 
+    // TODO implement response times in father urls?
     /**
      * Get father urls of the provided urls list from the most available barrel
      * @param urls the urls

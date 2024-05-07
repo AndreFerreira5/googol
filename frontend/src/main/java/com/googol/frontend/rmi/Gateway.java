@@ -1,6 +1,7 @@
 package com.googol.frontend.rmi;
 
 import com.googol.backend.gateway.GatewayRemote;
+import com.googol.backend.gateway.UpdateCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,7 @@ public class Gateway {
 
     @Nullable
     private GatewayRemote gatewayRemote;
+    private UpdateCallback clientCallback;
 
     @Value("${gateway.rmi.host}")
     private String gatewayRMIHost;
@@ -41,6 +43,17 @@ public class Gateway {
     public void init(){
         gatewayRMIURL = "//" + gatewayRMIHost + ":" + gatewayRMIPort + "/" + gatewayRMIServiceName;
         gatewayRemote = connectToGatewayRMI();
+
+        // Register the callback
+        if (gatewayRemote != null) {
+            try {
+                clientCallback = new UpdateCallbackImpl();
+                gatewayRemote.registerUpdateCallback(clientCallback);
+                System.out.println("Registered callback successfully.");
+            } catch (Exception e) {
+                System.err.println("[ERROR] Failed to register the callback: " + e.getMessage());
+            }
+        }
     }
 
     @Bean

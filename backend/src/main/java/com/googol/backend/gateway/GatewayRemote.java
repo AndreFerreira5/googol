@@ -198,4 +198,6 @@ public interface GatewayRemote extends Remote{
      * @throws RemoteException RMI Exception
      */
     ArrayList<String> getFatherUrls(String url) throws RemoteException;
+    void registerUpdateCallback(UpdateCallback client) throws RemoteException;
+    void unregisterUpdateCallback(UpdateCallback client) throws RemoteException;
 }
