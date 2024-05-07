@@ -404,7 +404,7 @@ public class Client {
         }
     }
     private static void getSystemStatus(){
-        ArrayList<String> status = null;
+        ArrayList<ArrayList<String>> status = null;
         boolean success = false;
         for(int i=0; i<maxRetries; i++){
             try {
@@ -419,8 +419,18 @@ public class Client {
         if(!success) System.out.println("Error getting system status!");
         else{
             System.out.println("-----SYSTEM STATUS-----");
-            for(String info : status){
-                System.out.println(info);
+            System.out.println("Barrels:");
+            for(String info : status.get(0)){
+                System.out.println("\t" + info);
+            }
+            System.out.println("Downloaders:");
+            for(String info : status.get(1)){
+                System.out.println("\t" + info);
+            }
+            System.out.println("Urls to process: " + status.get(2).get(0));
+            System.out.println("Top 10 searches:");
+            for(String info : status.get(3)){
+                System.out.println("\t" + info);
             }
         }
     }

@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import com.googol.backend.model.RawUrl;
 import com.googol.backend.strategy.CrawlingStrategy;
@@ -199,6 +200,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * Also, it's blocking so the Downloaders get the urls in order, preventing duplicate parsing
      */
     private static final LinkedBlockingDeque<RawUrl> urlsDeque = new LinkedBlockingDeque<>();
+    private static final ConcurrentHashMap<String, String> downloadersOnline = new ConcurrentHashMap<>();
     /**
      * Concurrent Hash Map to keep track of the online barrels.
      * Each entry's key and value is the barrel endpoint.
@@ -227,7 +229,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
     // notify all registered clients
-    private void notifyClients(ArrayList<String> message) {
+    private void notifyClients(ArrayList<ArrayList<String>> message) {
         synchronized (clients) {
             for (UpdateCallback client : clients) {
                 try {
@@ -405,6 +407,28 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
 
+    @Override
+    public void registerDownloader(String downloaderUUID) throws RemoteException {
+        downloadersOnline.put(downloaderUUID, downloaderUUID);
+        System.out.println("\nDownloader registered: " + getSystemInfo());
+        notifyClients(getSystemInfo());
+    }
+
+
+    @Override
+    public void unregisterDownloader(String downloaderUUID) throws RemoteException {
+        downloadersOnline.remove(downloaderUUID);
+        System.out.println("\nDownloader unregistered: " + getSystemInfo());
+        notifyClients(getSystemInfo());
+    }
+
+
+    @Override
+    public ArrayList<String> getRegisteredDownloaders() throws RemoteException {
+        return new ArrayList<>(downloadersOnline.values());
+    }
+
+
     /**
      * Register a barrel in the online barrels hash map, using the provided barrel endpoint
      * as its identifier. And log the registering.
@@ -503,7 +527,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      *
      * @return array string with the top 10 searches (or less if there are less than 10 distinct searches)
      */
-    public static String[] getTopTenSearchs() {
+    public static ArrayList<String> getTopTenSearchs() {
         // create a priority queue that orders its elements according to their frequency, in descending order.
         // 'a' and 'b' are entries of the map where each entry consists of a String (barrel identifier) and an Integer (search count).
         // the comparison is made on the search counts
@@ -521,7 +545,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
                     String phrase = entry.getKey().replaceAll("^\\[|\\]$", "").replace(", ", " ");
                     return phrase + ": " + entry.getValue(); // return the search and its count
                 })
-                .toArray(String[]::new); // collect the transformed stream elements into an array of strings
+                .collect(Collectors.toCollection(ArrayList::new)); // collect the transformed stream elements into an array of strings
     }
 
 
@@ -530,19 +554,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * The average response time is calculated by dividing the total response time by the number of requests
      * @return the average response time by barrel
      */
-    public String getAverageResponseTimeByBarrel() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Average response times:");
-
-        // build string with all barrels and their average response time
-        barrelMetricsMap.forEach((barrel, metrics) -> {
-            if (!sb.isEmpty()) { // if string builder is not empty, add a new line (this check is done in order to prevent a newline in the beginning of the string)
-                sb.append("\n");
-            }
-            // append the barrel and its average response time (barrel name: average response time)
-            sb.append(barrel).append(": ").append(String.format("%.4f", metrics.getAverageResponseTime() / 1_000_000_000.0)).append("s");
-        });
-        return sb.append("\n").toString(); // return the built string with a trailing newline
+    public ArrayList<String> getAverageResponseTimeByBarrel() {
+        return barrelMetricsMap.entrySet()
+                .stream()
+                .map(e -> e.getKey() + ": " + String.format("%.4f", e.getValue().getAverageResponseTime() / 1_000_000_000.0) + "s")
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
 
@@ -650,22 +666,22 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * @return array list containing the info
      */
     @Override
-    public ArrayList<String> getSystemInfo(){
+    public ArrayList<ArrayList<String>> getSystemInfo(){
         updateBarrelsAvailability(); // update all registered barrels availability
 
-        ArrayList<String> systemInfo = new ArrayList<>();
-        systemInfo.add(getAverageResponseTimeByBarrel()); // add all barrels average latency
-        try{
-            ArrayList<String> barrels = getRegisteredBarrels(); // get all registered barrels
-            StringBuilder barrelsString = new StringBuilder();
-            barrelsString.append("Registered barrels: \n");
-            for(String barrel: barrels){ // for each registered barrel
-                barrelsString.append(barrel).append("\n"); // append it to the string
-            }
-            systemInfo.add(String.valueOf(barrelsString)); // add registered barrels
-        } catch (RemoteException ignored) {}
+        // add all registered barrels and their respective response times
+        ArrayList<ArrayList<String>> systemInfo = new ArrayList<>();
+        systemInfo.add(getAverageResponseTimeByBarrel());
 
-        systemInfo.add("Top 10 searches: \n" + String.join("\n", getTopTenSearchs())); // top 10 searches
+        // add all registered downloaders
+        try{systemInfo.add(getRegisteredDownloaders());}
+        catch(Exception ignored){}
+
+        // add number of urls to process in queue by the downloaders
+        systemInfo.add(new ArrayList<>(List.of(String.valueOf(urlsDeque.size()))));
+
+
+        systemInfo.add(getTopTenSearchs()); // top 10 searches
         return systemInfo;
     }
 

@@ -13,7 +13,7 @@ public class UpdateCallbackImpl extends UnicastRemoteObject implements UpdateCal
     }
 
     @Override
-    public void onUpdate(ArrayList<String> message) throws RemoteException {
+    public void onUpdate(ArrayList<ArrayList<String>> message) throws RemoteException {
         WebSocketHandler.broadcast(String.valueOf(message));
     }
 }

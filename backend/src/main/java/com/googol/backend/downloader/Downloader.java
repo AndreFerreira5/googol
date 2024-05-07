@@ -10,11 +10,13 @@ import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.text.Collator;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.io.IOException;
 
+import com.googol.backend.storage.IndexStorageBarrel;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -81,10 +83,12 @@ class DownloaderConfigLoader{
 public class Downloader{
     private static boolean verbosity = false; // default
     private static final UUID uuid = UUID.randomUUID();
+    private static final String identifier = "Downloader-" + uuid.toString();
     private static int crawlingMaxDepth;
     private static int urlTimeout = 2000;
     private static String multicastAddress;
     private static int port;
+    private static MulticastSocket socket;
     private static int maxRetries = 5;
     private static int retryDelay = 1000; // 1 second
     private static char DELIMITER;
@@ -400,6 +404,33 @@ public class Downloader{
             } catch (InterruptedException ignored) {}
         }
         log("Reconnected!");
+
+        // register downloader on gateway
+        registerDownloader();
+    }
+
+
+    /**
+     * Register downloader in gateway
+     */
+    private static void registerDownloader(){
+        // register downloader in gateway
+        boolean registered = false;
+        for (int i = 0; i < Downloader.maxRetries; i++) {
+            try {
+                gatewayRemote.registerDownloader(identifier);
+                registered = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
+        }
+        if (!registered){
+            log("Error registering downloader in Gateway! (" + maxRetries + " retries failed) Exiting...");
+            System.exit(1);
+        }
+        log("Successfully registered downloader in Gateway! Downloader UUID: " + uuid.toString());
     }
 
 
@@ -507,6 +538,32 @@ public class Downloader{
 
 
     /**
+     * Exit function to close program
+     */
+    private static void exit(){
+        // unregister downloader in gateway
+        boolean unregistered = false;
+        for (int i = 0; i < Downloader.maxRetries; i++) {
+            try {
+                gatewayRemote.unregisterDownloader(identifier);
+                unregistered = true;
+                break;
+            } catch( ConnectException e){
+                reconnectToGatewayRMI();
+                i--;
+            } catch (RemoteException ignored){}
+        }
+        if(!unregistered) log("Error unregistering downloader in Gateway! (" + maxRetries + " retries failed) Exiting...");
+
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+
+        System.exit(1);
+    }
+
+
+    /**
      * The entry point of application.
      *
      * @param args the input arguments
@@ -520,11 +577,19 @@ public class Downloader{
         gatewayRemote = connectToGatewayRMI();
         if(gatewayRemote == null) System.exit(1);
 
+        registerDownloader();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutdown Hook is running!");
+            exit();
+        }));
+
 
         // setup multicast server
-        MulticastSocket socket = setupMulticastServer();
+        socket = setupMulticastServer();
         if(socket == null) return;
         log("Successfully connected to multicast server!");
+
 
         boolean interrupted = false;
         while(!interrupted){

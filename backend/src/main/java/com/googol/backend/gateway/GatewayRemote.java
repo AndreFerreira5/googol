@@ -104,6 +104,9 @@ public interface GatewayRemote extends Remote{
      */
     long incrementAndGetParsedUrls() throws RemoteException;
 
+    void registerDownloader(String downloaderUUID) throws RemoteException;
+    void unregisterDownloader(String downloaderUUID) throws RemoteException;
+    ArrayList<String> getRegisteredDownloaders() throws RemoteException;
     /**
      * Register a barrel in the online barrels hash map, using the provided barrel endpoint
      * as its identifier. And log the registering.
@@ -181,7 +184,7 @@ public interface GatewayRemote extends Remote{
      * and the top 10 searches
      * @return array list containing the info
      */
-    ArrayList<String> getSystemInfo() throws RemoteException;
+    ArrayList<ArrayList<String>> getSystemInfo() throws RemoteException;
 
     /**
      * Get father urls of the provided urls list from the most available barrel
