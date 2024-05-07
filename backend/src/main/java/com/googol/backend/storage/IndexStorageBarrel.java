@@ -929,11 +929,11 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
             long id = parsedUrl.id;
 
-            // making sure the title and description are not null (it can happen when the
+            // making sure the title and description are not null or empty (it can happen when the
             // url is created whenever processing a father url and that url doesn't exist,
             // so it's object is created with these 2 fields as null, because the title and description are not known at that time)
-            if(parsedUrl.title == null) parsedUrl.title = parsedMessage.get(1);
-            if(parsedUrl.description == null) parsedUrl.title = parsedMessage.get(2);
+            if(parsedUrl.title == null || parsedUrl.title.isEmpty()) parsedUrl.title = parsedMessage.get(1);
+            if(parsedUrl.description == null || parsedUrl.description.isEmpty()) parsedUrl.description = parsedMessage.get(2);
 
             for (int i = 3; i < parsedMessage.size(); i++) {
                 String word = parsedMessage.get(i);

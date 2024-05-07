@@ -17,12 +17,13 @@ repositories {
 
 dependencies {
     implementation project(':backend')
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-    compileOnly("org.springframework.boot:spring-boot-devtools")
+    compileOnly 'org.springframework.boot:spring-boot-devtools'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
 }
 

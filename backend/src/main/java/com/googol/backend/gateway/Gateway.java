@@ -991,7 +991,6 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         // set security policies for RMI
         System.getProperties().put("java.security.policy", "server.policy");
         System.getProperties().put("java.rmi.server.hostname", host);
-        System.out.println(System.getProperties().toString());
         System.setSecurityManager(new RMISecurityManager());
 
         if(!setupGatewayRMI()) System.exit(1); // setup gateway RMI, exit if failed

@@ -172,6 +172,7 @@ public class Downloader{
 
             // get page title, description, keywords and text
             String title = doc.title().replaceAll(String.valueOf(DELIMITER), "");
+            System.out.println("raw title: " + doc.title() + " - processed title: " + title);
             String description = doc.select("meta[name=description]").attr("content").replaceAll(String.valueOf(DELIMITER), "");
             //String keywords = doc.select("meta[name=keywords]").attr("content");
             String text = doc.body().text().replaceAll(String.valueOf(DELIMITER), ""); // remove | from the text to prevent conflicts

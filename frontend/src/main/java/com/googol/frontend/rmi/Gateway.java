@@ -1,36 +1,58 @@
 package com.googol.frontend.rmi;
 
 import com.googol.backend.gateway.GatewayRemote;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.lang.Nullable;
+
 import javax.annotation.PostConstruct;
 import java.rmi.Naming;
+import java.util.Optional;
 
 @Configuration
 public class Gateway {
 
-    //@Autowired
+    @Nullable
     private GatewayRemote gatewayRemote;
 
-    //@Autowired
-    //private RmiUpdateListener updateListener;
+    @Value("${gateway.rmi.host}")
+    private String gatewayRMIHost;
 
-    @PostConstruct
-    public void init(){
+    @Value("${gateway.rmi.port}")
+    private String gatewayRMIPort;
+
+    @Value("${gateway.rmi.serviceName}")
+    private String gatewayRMIServiceName;
+
+    private String gatewayRMIURL;
+
+
+    public GatewayRemote connectToGatewayRMI(){
         try{
-            // TODO change this to get the host and port dynamically
-            gatewayRemote = (GatewayRemote) Naming.lookup("//localhost:1099/Gateway");
-            //gatewayRemote.registerListener(updateListener);
-            //System.out.println("Update Listener Registered!!!");
+            return (GatewayRemote) Naming.lookup(gatewayRMIURL);
         } catch (Exception e){
-            e.printStackTrace();
-            throw new IllegalStateException("Failed to connect to the RMI service at startup.", e);
+            System.err.println("[ERROR] Failed to connect to the Gateway RMI service: " + e.getMessage());
+            return null;
         }
     }
 
+    @PostConstruct
+    public void init(){
+        gatewayRMIURL = "//" + gatewayRMIHost + ":" + gatewayRMIPort + "/" + gatewayRMIServiceName;
+        gatewayRemote = connectToGatewayRMI();
+    }
+
     @Bean
-    public GatewayRemote gatewayRemote() {
-        return gatewayRemote;
+    public Optional<GatewayRemote> gatewayRemote() {
+        return Optional.ofNullable(gatewayRemote);
+    }
+
+    public Optional<GatewayRemote> getOrReconnect(){
+        if(gatewayRemote == null){
+            gatewayRemote = connectToGatewayRMI();
+        }
+        return Optional.ofNullable(gatewayRemote);
     }
 }
+

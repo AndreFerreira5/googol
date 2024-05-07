@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,25 +9,40 @@
         <title>Googol</title>
     </head>
     <body>
-        <div class="flex flex-col items-center justify-center h-screen">
-            <h1 class="text-5xl font-extrabold dark:text-white">Googol</h1>
-            <form id="searchForm">
-                <input class="border p-2 border-gray-300 rounded-full" type="text" id="searchQuery" placeholder="" name="query">
-                <button type="submit">Search</button>
+        <div id="content" class="flex flex-col items-center justify-center space-y-20 min-h-screen transition-all duration-500 ease-in-out opacity-100">
+            <h1 id="title" class="text-5xl font-extrabold text-black transition-all duration-700 ease-in-out">Googol</h1>
+
+
+            <form id="operationForm" class="flex flex-row items-center space-x-2 relative">
+                <input class="border p-2 border-gray-300 rounded-full w-80" type="text" id="operationQuery" placeholder="" name="query">
+                <button type="submit" id="operationButton" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-all duration-300 ease-in-out z-10"></button>
+                <div id="changeOperationButton" class="invisible flex flex-col items-center space-y-3 px-2 py-2 w-0 h-0 bg-blue-500 text-white rounded-2xl transition-all duration-300 ease-in-out z-0">
+                    <button id="searchOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-blue-500 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Search</button>
+                    <button id="indexOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Index</button>
+                    <button id="fathersOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Fathers</button>
+                </div>
             </form>
-            <div id="searchResults"></div>
-            <div id="pageNavigators">
-                <button id="previousPage"> < </button>
-                <button id="nextPage"> > </button>
+
+            <div id="operationContainer" class="mt-10 w-full max-w-4xl px-4">
+                <div id="operationResults"></div>
+
+                <div id="pageNavigators" class="flex items-center justify-between hidden mt-6">
+                    <button id="previousPage" class="px-3 py-1 bg-gray-300 rounded"> < </button>
+                    <div class="flex items-center space-x-1">
+                        <span id="currentPage"></span>
+                        <span>/</span>
+                        <span id="lastPage"></span>
+                    </div>
+                    <button id="nextPage" class="px-3 py-1 bg-gray-300 rounded"> > </button>
+                </div>
             </div>
-            <div>
-                <a id="currentPage"></a>
-                <a>/</a>
-                <a id="lastPage"></a>
-            </div>
+
+            <div id="hackerNewsStories" class="mt-10 w-full max-w-4xl px-4"></div>
+            <div id="openAiAnalysis" class="mt-10 w-full max-w-4xl px-4"></div>
         </div>
+
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-        <script th:src="@{/js/search.js}"></script>
-        <script th:src="@{/js/system-metrics.js}"></script>
+        <script th:src="@{/js/index.js}"></script>
+        <script th:src="@{/js/operation.js}"></script>
     </body>
 </html>
