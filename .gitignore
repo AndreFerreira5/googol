@@ -44,3 +44,8 @@ Thumbs.db
 
 # environment varibales / properties
 keys.properties
+
+# keys and certificates
+*.crt
+*.key
+*.p12

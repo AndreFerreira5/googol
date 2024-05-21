@@ -1124,14 +1124,11 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
     @Override
     public ArrayList<ArrayList<String>> searchWord(String word, int page, int pageSize){
         if(word == null) return null;
-        PriorityQueue<ArrayList<String>> results = new PriorityQueue<>(new Comparator<ArrayList<String>>() {
-            @Override
-            public int compare(ArrayList<String> result1, ArrayList<String> result2) {
-                ParsedUrl parsedUrl1 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result1.get(0)));
-                ParsedUrl parsedUrl2 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result2.get(0)));
-                // sorting in descending order of father urls count
-                return Integer.compare(parsedUrl2.getFatherUrls().size(), parsedUrl1.getFatherUrls().size());
-            }
+        PriorityQueue<ArrayList<String>> results = new PriorityQueue<>((result1, result2) -> {
+            ParsedUrl parsedUrl1 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result1.get(0)));
+            ParsedUrl parsedUrl2 = parsedUrlsMap.get(urlToUrlKeyPairMap.get(result2.get(0)));
+            // sorting in descending order of father urls count
+            return Integer.compare(parsedUrl2.getFatherUrls().size(), parsedUrl1.getFatherUrls().size());
         });
 
         ArrayList<Long> linkIndices = getLinkIndices(word);
@@ -1219,17 +1216,19 @@ public class IndexStorageBarrel extends UnicastRemoteObject implements IndexStor
 
             results.offer(result);
         }
-        int totalPagesNumber = numResults/pageSize;
 
         ArrayList<ArrayList<String>> sortedResults = new ArrayList<>();
         while (!results.isEmpty()) {
             sortedResults.add(results.poll());
         }
+        int totalResults = sortedResults.size();
+        int totalPagesNumber = totalResults / pageSize + (totalResults % pageSize > 0 ? 1 : 0);
 
-        ArrayList<ArrayList<String>> pageResults = sortedResults.subList(page*pageSize, page*pageSize+pageSize)
-                .stream()
-                .map(ArrayList::new)
-                .collect(Collectors.toCollection(ArrayList::new));
+        // Calculate the correct sublist indices
+        int fromIndex = Math.min(page * pageSize, totalResults);
+        int toIndex = Math.min(fromIndex + pageSize, totalResults);
+
+        ArrayList<ArrayList<String>> pageResults = new ArrayList<>(sortedResults.subList(fromIndex, toIndex));
         pageResults.add(new ArrayList<>(List.of(String.valueOf(totalPagesNumber))));
         return pageResults;
     }

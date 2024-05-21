@@ -1,11 +1,29 @@
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <title>Fragment</title>
-</head>
-<body>
-<div th:fragment="resultsList">
-    <p th:text="${results}"></p>
+<div th:fragment="search-results" id="searchContainer" class="flex flex-col items-center justify-center w-full space-y-2">
+    <div id="analysisContainer" class="hidden rounded-2xl p-4 bg-slate-300 w-5/6"></div>
+    <div class="flex flex-row items-center justify-center w-full">
+        <div id="searchResultsContainer" class="basis-3/4 flex flex-col items-center justify-center w-full">
+            <div id="searchResults" class="flex flex-col space-y-2 items-center justify-center w-full">
+            </div>
+            <div id="pageNavigators" class="flex flex-row items-center justify-between space-x-2 hidden mt-6">
+                <button id="previousPage" class="px-3 py-1 bg-gray-300 rounded-2xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                    </svg>
+                </button>
+                <div class="flex items-center space-x-1">
+                    <span id="currentPage"></span>
+                    <span>/</span>
+                    <span id="lastPage"></span>
+                </div>
+                <button id="nextPage" class="px-3 py-1 bg-gray-300 rounded-2xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="hackerNewsStories" class="flex flex-col items-start justify-start basis-1/4 w-full h-full"></div>
+
+    </div>
 </div>
-</body>
-</html>

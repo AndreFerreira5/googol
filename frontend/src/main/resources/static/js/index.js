@@ -1,5 +1,6 @@
 let isTransitioning = false;
 var operationType = "search";
+var urlsToIndex = 0;
 updateDocumentByOperation();
 
 
@@ -18,7 +19,7 @@ async function animateHeader() {
         for (let i = 0; i < letters.length; i++) {
             const letter = document.createElement('span');
             letter.textContent = letters[i];
-            letter.classList.add('transition-all', 'duration-700', 'ease-in-out', 'text-black');
+            letter.classList.add('hover:text-blue-500', 'transition-all', 'duration-500', 'ease-in-out', 'text-black');
 
             header.appendChild(letter);
 
@@ -46,7 +47,7 @@ async function animateHeader() {
     resetHeader();
 }
 
-window.addEventListener('DOMContentLoaded', animateHeader);
+//window.addEventListener('DOMContentLoaded', animateHeader);
 
 
 async function updateDocumentByOperation(){
@@ -58,12 +59,14 @@ async function updateDocumentByOperation(){
     switch(operationType){
         case "search":
             operationButton.innerText = "Search";
+            document.querySelectorAll('[id^=additionalUrlButton]').forEach(button => button.remove()); // remove all additionalUrlButtons
             break;
         case "index":
             operationButton.innerText = "Index";
             break;
         case "fathers":
             operationButton.innerText = "Fathers";
+            document.querySelectorAll('[id^=additionalUrlButton]').forEach(button => button.remove()); // remove all additionalUrlButtons
             break;
     }
     await sleep(75);
@@ -76,17 +79,17 @@ async function updateDocumentByOperation(){
 async function showOperationButton(button) {
     button.classList.remove('invisible', '-translate-x-10');
     button.classList.add('translate-x-2/4');
-    await sleep(300);
+    await sleep(500);
     isTransitioning = false;
 }
 
 async function hideOperationButton(button) {
-    await sleep(300);
+    await sleep(500);
     if (!button.matches(':hover')) {
         isTransitioning = true;
         button.classList.remove('translate-x-2/4');
         button.classList.add('-translate-x-10');
-        await sleep(300);
+        await sleep(500);
         button.classList.add('invisible');
     }
 }
@@ -99,7 +102,7 @@ async function showOperationsDiv(changeOperationButton, searchOperationButton, i
     changeOperationButton.classList.add('bg-slate-200');
     changeOperationButton.classList.remove('w-0', 'h-0');
     changeOperationButton.classList.add('w-28', 'h-40');
-    await sleep(300);
+    await sleep(500);
     searchOperationButton.classList.remove('hidden');
     searchOperationButton.classList.remove('opacity-0');
     searchOperationButton.classList.add('opacity-100');
@@ -136,6 +139,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const indexOperationButton = document.getElementById('indexOperationButton');
     const fathersOperationButton = document.getElementById('fathersOperationButton');
     const content = document.getElementById('content');
+    const mainOperationInputDiv = document.getElementById('mainOperationInputDiv');
+    const operationForm = document.getElementById('operationForm');
+
 
     //operationButton.addEventListener('click', () => {
         //content.classList.remove('opacity-100');
@@ -149,7 +155,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     operationButton.addEventListener('mouseleave', () => hideOperationButton(changeOperationButton));
 
-    
+
     changeOperationButton.addEventListener('mouseenter', () => showOperationsDiv(changeOperationButton, searchOperationButton, indexOperationButton, fathersOperationButton));
     changeOperationButton.addEventListener('mouseleave', () => {
         hideOperationsDiv(changeOperationButton, searchOperationButton, indexOperationButton, fathersOperationButton)
@@ -178,7 +184,45 @@ document.addEventListener("DOMContentLoaded", function() {
         updateDocumentByOperation();
         searchOperationButton.classList.remove('bg-slate-300');
         searchOperationButton.classList.add('bg-blue-500');
+
+        urlsToIndex = 0;
     });
+
+
+    function addNewUrlInput() {
+        urlsToIndex++;
+
+        // create new input div
+        let newInputDiv = document.createElement("div");
+        newInputDiv.id = "urlIndexInput" + urlsToIndex.toString();
+        newInputDiv.classList.add("flex", "flex-row", "items-center", "justify-center", "space-x-2");
+
+        // create new URL input
+        let urlInput = document.createElement("input");
+        urlInput.classList.add('border', 'p-2', 'border-gray-300', 'rounded-full', 'w-80', 'url-input');
+
+        // create new button to remove URL input
+        let removeUrlButton = document.createElement("button");
+        removeUrlButton.id = "removeUrlButton" + urlsToIndex.toString();
+        removeUrlButton.classList.add("rounded-full", "px-2", "py-2", "bg-red-500", "text-white", "transition-all", "duration-300", "ease-in-out");
+        let minusText = document.createElement("p");
+        minusText.textContent = "-";
+        removeUrlButton.append(minusText);
+
+        // set up event listener to remove the input div when the button is clicked
+        removeUrlButton.addEventListener("click", function(event) {
+            event.preventDefault();
+            newInputDiv.remove();
+        });
+
+        // append input and remove button to new div
+        newInputDiv.append(urlInput);
+        newInputDiv.append(removeUrlButton);
+
+        // append new div to form
+        operationForm.append(newInputDiv);
+    }
+
 
     indexOperationButton.addEventListener("click", function(){
         event.preventDefault();
@@ -200,6 +244,21 @@ document.addEventListener("DOMContentLoaded", function() {
         updateDocumentByOperation();
         indexOperationButton.classList.remove('bg-slate-300');
         indexOperationButton.classList.add('bg-blue-500');
+
+        // create new button for adding more URLs
+        let additionalUrlButton = document.createElement("button");
+        additionalUrlButton.id = "additionalUrlButton" + urlsToIndex.toString();
+        additionalUrlButton.classList.add("rounded-full", "px-2", "py-2", "bg-blue-500", "text-white", "transition-all", "duration-300", "ease-in-out");
+        let plusText = document.createElement("p");
+        plusText.textContent = "+";
+        additionalUrlButton.append(plusText);
+
+        mainOperationInputDiv.append(additionalUrlButton);
+
+        additionalUrlButton.addEventListener("click", function(event) {
+            event.preventDefault();
+            addNewUrlInput();
+        });
     });
 
     fathersOperationButton.addEventListener("click", function(){
@@ -222,5 +281,10 @@ document.addEventListener("DOMContentLoaded", function() {
         updateDocumentByOperation();
         fathersOperationButton.classList.remove('bg-slate-300');
         fathersOperationButton.classList.add('bg-blue-500');
+
+        urlsToIndex = 0;
     });
+
+
+
 });

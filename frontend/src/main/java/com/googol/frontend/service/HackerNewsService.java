@@ -34,6 +34,7 @@ public class HackerNewsService {
     private final ConcurrentHashMap<Integer, Story> stories = new ConcurrentHashMap<Integer, Story>();
 
 
+    /*
     //@PostConstruct
     private void onStartup(){
         try{
@@ -44,6 +45,7 @@ public class HackerNewsService {
             System.err.println("[ERROR] Failed to get top stories on boot: " + e.getMessage());
         }
     }
+     */
 
 
     public void processTopStories(ArrayList<Integer> topStories){

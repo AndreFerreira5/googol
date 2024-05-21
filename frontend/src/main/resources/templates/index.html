@@ -7,43 +7,48 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
         <title>Googol</title>
+
+        <link rel="stylesheet" th:href="@{/css/admin.css}">
     </head>
     <body>
+        <div class="flex flex-row items-center justify-center mt-2 space-y-2">
+            <div class="flex flex-row items-center justify-center bg-blue-500/75 rounded-full w-12 px-4 py-1">
+                <button id="adminButton">
+                    <svg id="openAdminSVG" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 transition-all duration-150 ease-in-out">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                    <svg id="closeAdminSVG" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 hidden transition-all duration-150 ease-in-out">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div th:insert="admin :: admin-panel" id="adminContainer" class="hidden"></div>
+
         <div id="content" class="flex flex-col items-center justify-center space-y-20 min-h-screen transition-all duration-500 ease-in-out opacity-100">
             <h1 id="title" class="text-5xl font-extrabold text-black transition-all duration-700 ease-in-out">Googol</h1>
 
-
-            <form id="operationForm" class="flex flex-row items-center space-x-2 relative">
-                <input class="border p-2 border-gray-300 rounded-full w-80" type="text" id="operationQuery" placeholder="" name="query">
-                <button type="submit" id="operationButton" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-all duration-300 ease-in-out z-10"></button>
-                <div id="changeOperationButton" class="invisible flex flex-col items-center space-y-3 px-2 py-2 w-0 h-0 bg-blue-500 text-white rounded-2xl transition-all duration-300 ease-in-out z-0">
-                    <button id="searchOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-blue-500 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Search</button>
-                    <button id="indexOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Index</button>
-                    <button id="fathersOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Fathers</button>
+            <form id="operationForm" class="flex flex-col items-center space-y-2">
+                <div id="mainOperationInputDiv" class="flex flex-row items-center space-x-2 relative">
+                    <input class="border p-2 border-gray-300 rounded-full w-80 url-input" type="text" id="operationQuery" placeholder="" name="query">
+                    <button type="submit" id="operationButton" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-all duration-300 ease-in-out z-10"></button>
+                    <div id="changeOperationButton" class="invisible flex flex-col items-center space-y-3 px-2 py-2 w-0 h-0 bg-blue-500 text-white rounded-2xl transition-all duration-300 ease-in-out z-0">
+                        <button id="searchOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-blue-500 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Search</button>
+                        <button id="indexOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Index</button>
+                        <button id="fathersOperationButton" class="hidden opacity-0 w-24 px-4 py-2 bg-slate-300 hover:bg-blue-500 text-white rounded-full transition-all duration-300 ease-in-out z-10">Fathers</button>
+                    </div>
                 </div>
             </form>
 
-            <div id="operationContainer" class="mt-10 w-full max-w-4xl px-4">
-                <div id="operationResults"></div>
+            <div id="operationResults"></div>
+            <div th:insert="search-results :: search-results" class="w-full"></div>
 
-                <div id="pageNavigators" class="flex items-center justify-between hidden mt-6">
-                    <button id="previousPage" class="px-3 py-1 bg-gray-300 rounded"> < </button>
-                    <div class="flex items-center space-x-1">
-                        <span id="currentPage"></span>
-                        <span>/</span>
-                        <span id="lastPage"></span>
-                    </div>
-                    <button id="nextPage" class="px-3 py-1 bg-gray-300 rounded"> > </button>
-                </div>
-            </div>
-
-            <div id="hackerNewsStories" class="mt-10 w-full max-w-4xl px-4"></div>
-            <div id="openAiAnalysis" class="mt-10 w-full max-w-4xl px-4"></div>
+            <div th:insert="footer :: footer"></div>
         </div>
 
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
         <script th:src="@{/js/index.js}"></script>
         <script th:src="@{/js/operation.js}"></script>
-        <script th:src="@{/js/websocket.js}"></script>
+        <script th:src="@{/js/admin.js}"></script>
     </body>
 </html>

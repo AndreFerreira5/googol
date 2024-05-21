@@ -134,6 +134,14 @@ class BarrelMetrics {
     public double getAvailability() {
         return availability;
     }
+
+    public void setRequestCount(long requestCount) {
+        this.requestCount = requestCount;
+    }
+
+    public long getRequestCount() {
+        return requestCount;
+    }
 }
 
 
@@ -229,7 +237,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     }
 
     // notify all registered clients
-    private void notifyClients(ArrayList<ArrayList<String>> message) {
+    private static void notifyClients(ArrayList<ArrayList<String>> message) {
         synchronized (clients) {
             for (UpdateCallback client : clients) {
                 try {
@@ -410,7 +418,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     @Override
     public void registerDownloader(String downloaderUUID) throws RemoteException {
         downloadersOnline.put(downloaderUUID, downloaderUUID);
-        System.out.println("\nDownloader registered: " + getSystemInfo());
+        System.out.println("\nDownloader registered: " + downloaderUUID);
         notifyClients(getSystemInfo());
     }
 
@@ -418,7 +426,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
     @Override
     public void unregisterDownloader(String downloaderUUID) throws RemoteException {
         downloadersOnline.remove(downloaderUUID);
-        System.out.println("\nDownloader unregistered: " + getSystemInfo());
+        System.out.println("\nDownloader unregistered: " + downloaderUUID);
         notifyClients(getSystemInfo());
     }
 
@@ -543,7 +551,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
                     // remove leading and trailing brackets and replace commas with spaces because the keys have brackets and commas
                     // TODO fix the root cause of this (the searched strings should be treated before being inserted in the map)
                     String phrase = entry.getKey().replaceAll("^\\[|\\]$", "").replace(", ", " ");
-                    return phrase + ": " + entry.getValue(); // return the search and its count
+                    return phrase + "|" + entry.getValue(); // return the search and its count
                 })
                 .collect(Collectors.toCollection(ArrayList::new)); // collect the transformed stream elements into an array of strings
     }
@@ -554,11 +562,17 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
      * The average response time is calculated by dividing the total response time by the number of requests
      * @return the average response time by barrel
      */
-    public ArrayList<String> getAverageResponseTimeByBarrel() {
-        return barrelMetricsMap.entrySet()
-                .stream()
-                .map(e -> e.getKey() + ": " + String.format("%.4f", e.getValue().getAverageResponseTime() / 1_000_000_000.0) + "s")
-                .collect(Collectors.toCollection(ArrayList::new));
+    public ArrayList<String> getBarrelsInfo() {
+        ArrayList<String> barrelsInfo = new ArrayList<>();
+        barrelMetricsMap.forEach((key, value) -> {
+            String barrelInfo = key + "|";
+            barrelInfo += String.format("%.4f", value.getAverageResponseTime() / 1_000_000_000.0) + "s|";
+            barrelInfo += value.getAvailability() + "|";
+            barrelInfo += value.getRequestCount() + "|";
+            barrelsInfo.add(barrelInfo);
+        });
+
+        return barrelsInfo;
     }
 
 
@@ -637,28 +651,6 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         }
     }
 
-/*
-    private static void exportAllBarrels(){
-        for(String barrelEndpoint: barrelsOnline.values()){
-            exportBarrel(barrelEndpoint);
-        }
-    }
-
-    private static void exportBarrel(String barrelEndpoint) {
-        if (barrelEndpoint == null){
-            System.out.println("Invalid barrel endpoint");
-            return;
-        }
-
-        IndexStorageBarrelRemote barrelRemote;
-        try {
-            barrelRemote = (IndexStorageBarrelRemote) Naming.lookup(barrelEndpoint);
-            barrelRemote.exportBarrel();
-        } catch (Exception e) {
-            System.out.println("Error looking up barrel: " + e.getMessage());
-        }
-    }
-*/
 
     /**
      * Get system info. Namely, each registered barrel, and it's availability and average response time,
@@ -671,7 +663,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
 
         // add all registered barrels and their respective response times
         ArrayList<ArrayList<String>> systemInfo = new ArrayList<>();
-        systemInfo.add(getAverageResponseTimeByBarrel());
+        systemInfo.add(getBarrelsInfo());
 
         // add all registered downloaders
         try{systemInfo.add(getRegisteredDownloaders());}
@@ -1040,6 +1032,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRemote {
         System.setSecurityManager(new RMISecurityManager());
 
         if(!setupGatewayRMI()) System.exit(1); // setup gateway RMI, exit if failed
+
+        // notify frontend sessions with system info as soon as the system boots
+        try{
+            notifyClients(new Gateway().getSystemInfo());
+        } catch (Exception ignored){}
 
         // info loop
         while(true){
